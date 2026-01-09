@@ -1,0 +1,13 @@
+# Ignore files for Docker build
+node_modules
+npm-debug.log
+.env
+.env.local
+*.md
+.git
+.gitignore
+.dockerignore
+Dockerfile
+fly.toml
+src
+tsconfig.json
