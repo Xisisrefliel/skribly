@@ -2,7 +2,8 @@
 export type TranscriptionStatus = 
   | 'pending'      // Uploaded, waiting to process
   | 'processing'   // Currently being transcribed
-  | 'completed'    // Successfully transcribed
+  | 'structuring'  // Transcription done, now structuring with LLM
+  | 'completed'    // Successfully transcribed and structured
   | 'error';       // Failed to transcribe
 
 // Main transcription type
@@ -12,10 +13,13 @@ export interface Transcription {
   title: string;
   audioUrl: string | null;
   audioDuration: number | null;  // Duration in seconds
-  transcriptionText: string | null;
+  transcriptionText: string | null;      // Raw transcription
+  structuredText: string | null;         // LLM-structured markdown
   status: TranscriptionStatus;
   progress: number;              // 0.0 to 1.0
   errorMessage: string | null;
+  pdfKey: string | null;         // R2 storage key for pre-generated PDF
+  pdfGeneratedAt: string | null; // ISO date string when PDF was generated
   createdAt: string;             // ISO date string
   updatedAt: string;             // ISO date string
 }

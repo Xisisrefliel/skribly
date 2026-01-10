@@ -47,9 +47,12 @@ interface TranscriptionRow {
   audio_url: string | null;
   audio_duration: number | null;
   transcription_text: string | null;
+  structured_text: string | null;
   status: TranscriptionStatus;
   progress: number;
   error_message: string | null;
+  pdf_key: string | null;
+  pdf_generated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -62,9 +65,12 @@ function rowToTranscription(row: TranscriptionRow): Transcription {
     audioUrl: row.audio_url,
     audioDuration: row.audio_duration,
     transcriptionText: row.transcription_text,
+    structuredText: row.structured_text,
     status: row.status,
     progress: row.progress,
     errorMessage: row.error_message,
+    pdfKey: row.pdf_key,
+    pdfGeneratedAt: row.pdf_generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -83,9 +89,12 @@ export const d1Service = {
         audio_url TEXT,
         audio_duration INTEGER,
         transcription_text TEXT,
+        structured_text TEXT,
         status TEXT DEFAULT 'pending',
         progress REAL DEFAULT 0,
         error_message TEXT,
+        pdf_key TEXT,
+        pdf_generated_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
@@ -95,6 +104,29 @@ export const d1Service = {
       CREATE INDEX IF NOT EXISTS idx_transcriptions_device_id 
       ON transcriptions(device_id)
     `);
+
+    // Add structured_text column if it doesn't exist (migration for existing DBs)
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN structured_text TEXT`);
+      console.log('Added structured_text column to transcriptions table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
+    // Add PDF columns if they don't exist (migration for existing DBs)
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN pdf_key TEXT`);
+      console.log('Added pdf_key column to transcriptions table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN pdf_generated_at TEXT`);
+      console.log('Added pdf_generated_at column to transcriptions table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
   },
 
   /**
@@ -104,8 +136,9 @@ export const d1Service = {
     await executeQuery(
       `INSERT INTO transcriptions (
         id, device_id, title, audio_url, audio_duration, 
-        transcription_text, status, progress, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        transcription_text, structured_text, status, progress, error_message,
+        pdf_key, pdf_generated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.deviceId,
@@ -113,9 +146,12 @@ export const d1Service = {
         data.audioUrl,
         data.audioDuration,
         data.transcriptionText,
+        data.structuredText,
         data.status,
         data.progress,
         data.errorMessage,
+        data.pdfKey,
+        data.pdfGeneratedAt,
       ]
     );
   },
@@ -160,7 +196,7 @@ export const d1Service = {
   },
 
   /**
-   * Update transcription with completed text
+   * Update transcription with completed text (raw only, before structuring)
    */
   async updateTranscriptionText(
     id: string, 
@@ -169,10 +205,26 @@ export const d1Service = {
   ): Promise<void> {
     await executeQuery(
       `UPDATE transcriptions 
-       SET transcription_text = ?, audio_duration = ?, status = 'completed', 
-           progress = 1.0, updated_at = datetime('now')
+       SET transcription_text = ?, audio_duration = ?, status = 'structuring', 
+           progress = 0.9, updated_at = datetime('now')
        WHERE id = ?`,
       [text, duration, id]
+    );
+  },
+
+  /**
+   * Update transcription with structured text (final step)
+   */
+  async updateStructuredText(
+    id: string, 
+    structuredText: string
+  ): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET structured_text = ?, status = 'completed', 
+           progress = 1.0, updated_at = datetime('now')
+       WHERE id = ?`,
+      [structuredText, id]
     );
   },
 
@@ -185,5 +237,32 @@ export const d1Service = {
       [id, deviceId]
     );
     return true; // D1 doesn't return affected rows count via REST API
+  },
+
+  /**
+   * Update transcription with PDF info after background generation
+   */
+  async updatePdfInfo(
+    id: string,
+    pdfKey: string
+  ): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET pdf_key = ?, pdf_generated_at = datetime('now'), updated_at = datetime('now')
+       WHERE id = ?`,
+      [pdfKey, id]
+    );
+  },
+
+  /**
+   * Clear PDF info (used when regenerating PDF)
+   */
+  async clearPdfInfo(id: string): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET pdf_key = NULL, pdf_generated_at = NULL, updated_at = datetime('now')
+       WHERE id = ?`,
+      [id]
+    );
   },
 };

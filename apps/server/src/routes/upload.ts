@@ -16,8 +16,9 @@ const upload = multer({
     fileSize: 500 * 1024 * 1024, // 500MB max file size
   },
   fileFilter: (_req, file, cb) => {
-    // Accept audio files
+    // Accept audio and video files
     const allowedMimes = [
+      // Audio formats
       'audio/mpeg',
       'audio/mp3',
       'audio/mp4',
@@ -29,18 +30,30 @@ const upload = multer({
       'audio/ogg',
       'audio/flac',
       'audio/webm',
-      'video/mp4', // Some voice memos are saved as video/mp4
+      'audio/aac',
+      // Video formats
+      'video/mp4',
+      'video/mpeg',
+      'video/quicktime',  // .mov files
+      'video/x-msvideo',  // .avi files
+      'video/x-matroska', // .mkv files
+      'video/webm',
+      'video/ogg',
+      'video/3gpp',
+      'video/3gpp2',
     ];
     
-    if (allowedMimes.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
+    if (allowedMimes.includes(file.mimetype) || 
+        file.mimetype.startsWith('audio/') || 
+        file.mimetype.startsWith('video/')) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only audio files are allowed.`));
+      cb(new Error(`Invalid file type: ${file.mimetype}. Only audio and video files are allowed.`));
     }
   },
 });
 
-// POST /api/upload - Upload an audio file
+// POST /api/upload - Upload an audio or video file
 router.post('/upload', upload.single('audio'), async (req: Request, res: Response): Promise<void> => {
   try {
     const deviceId = req.deviceId!;
@@ -48,14 +61,15 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     const title = (req.body.title as string) || 'Untitled Lecture';
 
     if (!file) {
-      res.status(400).json({ error: 'Bad Request', message: 'No audio file provided' });
+      res.status(400).json({ error: 'Bad Request', message: 'No audio or video file provided' });
       return;
     }
 
     // Generate unique ID for this transcription
     const id = uuidv4();
     const fileExtension = file.originalname.split('.').pop() || 'mp3';
-    const r2Key = `audio/${deviceId}/${id}/original.${fileExtension}`;
+    const isVideo = file.mimetype.startsWith('video/');
+    const r2Key = `${isVideo ? 'video' : 'audio'}/${deviceId}/${id}/original.${fileExtension}`;
 
     // Upload to R2
     await r2Service.uploadFile(r2Key, file.buffer, file.mimetype);
@@ -68,14 +82,17 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       audioUrl: r2Key,
       audioDuration: null, // Will be set during processing
       transcriptionText: null,
+      structuredText: null,
       status: 'pending',
       progress: 0,
       errorMessage: null,
+      pdfKey: null,
+      pdfGeneratedAt: null,
     });
 
     const response: UploadResponse = {
       id,
-      message: 'Audio uploaded successfully. Ready for transcription.',
+      message: `${isVideo ? 'Video' : 'Audio'} uploaded successfully. Ready for transcription.`,
     };
 
     res.status(201).json(response);
