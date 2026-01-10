@@ -1,50 +1,111 @@
-# Welcome to your Expo app 👋
+# Skribly
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Skribly is a lecture transcription and note-taking app that transforms audio recordings into structured, readable notes using AI.
 
-## Get started
+## Features
 
-1. Install dependencies
+- Record or upload audio lectures
+- Automatic transcription using Groq's Whisper API
+- AI-powered structuring of raw transcriptions into organized notes with headers, bullet points, and formatting
+- Export notes as beautifully formatted PDFs
+- Local PDF caching for instant sharing
+- Batch export multiple lectures at once
 
-   ```bash
-   npm install
-   ```
+## Project Structure
 
-2. Start the app
+This is a monorepo containing:
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+├── apps/
+│   ├── ios/                 # Native iOS app (SwiftUI)
+│   │   └── Lecture/
+│   │       └── Sources/
+│   │           ├── Models/          # Data models
+│   │           ├── Views/           # SwiftUI views
+│   │           ├── ViewModels/      # State management
+│   │           └── Services/        # API client, Keychain
+│   │
+│   ├── server/              # Node.js backend (Express)
+│   │   └── src/
+│   │       ├── routes/      # API endpoints
+│   │       ├── services/    # Business logic (transcription, PDF, storage)
+│   │       └── middleware/  # Auth middleware
+│   │
+│   └── mobile/              # (Legacy) React Native/Expo app
+│
+└── packages/
+    └── shared/              # Shared TypeScript types
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Tech Stack
 
-## Learn more
+### iOS App
+- **SwiftUI** - Modern declarative UI framework
+- **Swift Concurrency** - async/await for network operations
+- **Keychain Services** - Secure device ID storage
 
-To learn more about developing your project with Expo, look at the following resources:
+### Backend Server
+- **Node.js + Express** - REST API server
+- **Groq API** - Fast Whisper transcription
+- **Anthropic Claude** - LLM for note structuring
+- **Cloudflare R2** - Audio and PDF storage
+- **Cloudflare D1** - SQLite database
+- **md-to-pdf** - PDF generation from Markdown
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Getting Started
 
-## Join the community
+### Prerequisites
 
-Join our community of developers creating universal apps.
+- Xcode 15+ (for iOS development)
+- Node.js 18+
+- Bun (recommended) or npm
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Backend Setup
+
+1. Install dependencies:
+   ```bash
+   bun install
+   ```
+
+2. Create a `.env` file in `apps/server/`:
+   ```env
+   GROQ_API_KEY=your_groq_api_key
+   ANTHROPIC_API_KEY=your_anthropic_api_key
+   CLOUDFLARE_ACCOUNT_ID=your_account_id
+   CLOUDFLARE_API_TOKEN=your_api_token
+   R2_ACCESS_KEY_ID=your_r2_access_key
+   R2_SECRET_ACCESS_KEY=your_r2_secret
+   R2_BUCKET_NAME=your_bucket_name
+   D1_DATABASE_ID=your_d1_database_id
+   ```
+
+3. Run the development server:
+   ```bash
+   bun run dev:server
+   ```
+
+### iOS App Setup
+
+1. Open `apps/ios/Lecture.xcodeproj` in Xcode
+
+2. Update the server URL in `APIClient.swift`:
+   ```swift
+   private let baseURL = "http://YOUR_LOCAL_IP:3000"
+   ```
+
+3. Build and run on simulator or device
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/transcriptions` | List all transcriptions |
+| GET | `/api/transcription/:id` | Get single transcription |
+| POST | `/api/upload` | Upload audio file |
+| POST | `/api/transcribe/:id` | Start transcription |
+| POST | `/api/transcription/:id/pdf` | Generate/get PDF |
+| DELETE | `/api/transcription/:id` | Delete transcription |
+
+## License
+
+Private - All rights reserved
