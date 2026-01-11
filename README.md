@@ -26,12 +26,10 @@ This is a monorepo containing:
 │   │           └── Services/        # API client, Keychain
 │   │
 │   ├── server/              # Node.js backend (Express)
-│   │   └── src/
-│   │       ├── routes/      # API endpoints
-│   │       ├── services/    # Business logic (transcription, PDF, storage)
-│   │       └── middleware/  # Auth middleware
-│   │
-│   └── mobile/              # (Legacy) React Native/Expo app
+│      └── src/
+│          ├── routes/      # API endpoints
+│          ├── services/    # Business logic (transcription, PDF, storage)
+│          └── middleware/  # Auth middleware
 │
 └── packages/
     └── shared/              # Shared TypeScript types
