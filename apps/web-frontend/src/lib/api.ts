@@ -1,24 +1,28 @@
 import type {
-  Transcription,
-  TranscriptionListResponse,
-  TranscriptionDetailResponse,
-  UploadResponse,
-  TranscribeResponse,
-  Quiz,
   FlashcardDeck,
-  GenerateQuizResponse,
-  GenerateFlashcardsResponse,
   Folder,
-  Tag,
   FolderListResponse,
-  TagListResponse,
+  GenerateFlashcardsResponse,
+  GenerateQuizResponse,
+  Quiz,
   QuizAttempt,
   QuizAttemptResponse,
   QuizAttemptsListResponse,
   SaveQuizAttemptRequest,
+  Tag,
+  TagListResponse,
+  TranscribeResponse,
+  Transcription,
+  TranscriptionDetailResponse,
+  TranscriptionListResponse,
+  UploadResponse,
 } from '@lecture/shared';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+// In production, VITE_API_URL should be set to the backend server URL.
+// During development, the Vite proxy handles /api routes locally.
+// For production builds, we must point to the actual API server.
+const API_BASE = import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://lecture-transcription-api.fly.dev' : '');
 
 interface ApiError {
   error: string;
@@ -30,12 +34,23 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    // Try Bearer token first (for cross-origin), fall back to cookies
+    const token = localStorage.getItem('lecture-session-token');
+
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+    };
+    
+    // Only add Authorization header if we have a valid token
+    // Otherwise, let the cookie-based auth handle it
+    if (token && token.length > 0) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      credentials: 'include', // Send cookies with requests
-      headers: {
-        ...options.headers,
-      },
+      credentials: 'include',
+      headers,
     });
 
     if (!response.ok) {
@@ -80,9 +95,13 @@ class ApiClient {
     });
   }
 
-  async startTranscription(id: string): Promise<TranscribeResponse> {
+  async startTranscription(id: string, mode: 'fast' | 'quality' = 'quality'): Promise<TranscribeResponse> {
     return this.request<TranscribeResponse>(`/api/transcribe/${id}`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mode }),
     });
   }
 
@@ -118,7 +137,7 @@ class ApiClient {
   }
 
   // Study features
-  
+
   /**
    * Get stored quiz for a transcription (auto-generated after transcription completes)
    */

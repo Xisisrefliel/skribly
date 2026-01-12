@@ -37,10 +37,9 @@ function getSessionTokenFromRequest(req: Request): string | null {
     return authHeader.slice(7);
   }
   
-  // Fall back to cookie
-  const cookieName = 'lecture.session_token';
+  // Fall back to cookie (better-auth uses 'better-auth.session_token' by default)
   const cookies = req.cookies || {};
-  return cookies[cookieName] || null;
+  return cookies['better-auth.session_token'] || cookies['lecture.session_token'] || null;
 }
 
 /**
@@ -64,7 +63,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     
     if (sessionToken) {
       // If we have a Bearer token, convert it to a cookie header for better-auth
-      headers['cookie'] = `lecture.session_token=${sessionToken}`;
+      headers['cookie'] = `better-auth.session_token=${sessionToken}`;
     } else {
       // Use the original cookie header
       headers['cookie'] = req.headers.cookie || '';
@@ -116,7 +115,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     
     const headers: Record<string, string> = {};
     if (sessionToken) {
-      headers['cookie'] = `lecture.session_token=${sessionToken}`;
+      headers['cookie'] = `better-auth.session_token=${sessionToken}`;
     } else {
       headers['cookie'] = req.headers.cookie || '';
     }

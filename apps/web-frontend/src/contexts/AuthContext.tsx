@@ -1,5 +1,5 @@
-import { createContext, useContext, type ReactNode } from 'react';
-import { useSession, signIn, signOut } from '@/lib/auth-client';
+import { signIn, signOut, useSession, setSessionToken, clearSessionToken } from '@/lib/auth-client';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 interface User {
   id: string;
@@ -20,18 +20,33 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Use better-auth's useSession hook - handles all session management automatically
   const { data: session, isPending, refetch } = useSession();
-
+  const [isProcessingCallback, setIsProcessingCallback] = useState(false);
   const user = session?.user as User | null;
 
+  // Handle OAuth callback - extract token from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (token) {
+      setIsProcessingCallback(true);
+      // Store the token
+      setSessionToken(token);
+      
+      // Clean up URL
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+      
+      // Refetch session with the new token
+      setTimeout(() => {
+        refetch();
+        setIsProcessingCallback(false);
+      }, 100);
+    }
+  }, [refetch]);
+
   const handleSignIn = async () => {
-    // better-auth handles the entire OAuth flow:
-    // 1. Redirects to Google
-    // 2. Handles callback
-    // 3. Creates session
-    // 4. Sets cookies
-    // 5. Redirects back to callbackURL
     await signIn.social({
       provider: 'google',
       callbackURL: window.location.origin,
@@ -40,13 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await signOut();
+    clearSessionToken();
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading: isPending,
+        isLoading: isPending || isProcessingCallback,
         isAuthenticated: !!user,
         signIn: handleSignIn,
         signOut: handleSignOut,

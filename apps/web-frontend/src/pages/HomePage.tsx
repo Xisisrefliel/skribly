@@ -121,7 +121,7 @@ export function HomePage() {
                   className="border-0 bg-transparent shadow-none group"
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  <CardContent className="pt-6 text-center">
+                  <CardContent className="py-6 text-center">
                     <div className={`
                       mx-auto w-14 h-14 rounded-2xl ${feature.bg} 
                       flex items-center justify-center mb-4

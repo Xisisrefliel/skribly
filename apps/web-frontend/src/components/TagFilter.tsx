@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import type { Tag } from '@lecture/shared';
 import { api } from '@/lib/api';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';

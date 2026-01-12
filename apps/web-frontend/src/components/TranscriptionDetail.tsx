@@ -17,9 +17,11 @@ import {
   Share2,
   Check,
   Lock,
-  Unlock
+  Unlock,
+  Music,
+  Video
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -146,6 +148,7 @@ export function TranscriptionDetail() {
   const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const [isDownloadingSource, setIsDownloadingSource] = useState(false);
 
   const fetchTranscription = async () => {
     if (!id) return;
@@ -227,6 +230,30 @@ export function TranscriptionDetail() {
       setError(err instanceof Error ? err.message : 'Failed to generate PDF');
     } finally {
       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadSource = async () => {
+    if (!transcription?.audioUrl) return;
+
+    setIsDownloadingSource(true);
+    try {
+      const response = await fetch(transcription.audioUrl);
+      if (!response.ok) throw new Error('Failed to download source media');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${transcription.title}.${transcription.sourceType === 'video' ? 'mp4' : 'mp3'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download source media');
+    } finally {
+      setIsDownloadingSource(false);
     }
   };
 
@@ -709,6 +736,45 @@ export function TranscriptionDetail() {
             </div>
           )}
         </main>
+
+        {/* Right sidebar - Source file player (hidden on mobile) */}
+        {transcription.audioUrl && (
+          <aside className="hidden xl:block w-64 flex-shrink-0 sticky top-6 self-start">
+            <Card className="!gap-3 p-4">
+              <CardHeader className="p-0">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+                  {transcription.sourceType === 'video' ? (
+                    <Video className="h-4 w-4" />
+                  ) : (
+                    <Music className="h-4 w-4" />
+                  )}
+                  Source
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <button
+                    onClick={handleDownloadSource}
+                    disabled={isDownloadingSource}
+                    className="relative group aspect-square bg-muted/50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-muted/70 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Download source media"
+                  >
+                    {transcription.sourceType === 'video' ? (
+                      <Video className="h-16 w-16 text-muted-foreground/50" />
+                    ) : (
+                      <Music className="h-16 w-16 text-muted-foreground/50" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
+                      {isDownloadingSource ? (
+                        <Loader2 className="h-8 w-8 text-white animate-spin" />
+                      ) : (
+                        <Download className="h-8 w-8 text-white" />
+                      )}
+                    </div>
+                  </button>
+              </CardContent>
+            </Card>
+          </aside>
+        )}
       </div>
     </div>
   );

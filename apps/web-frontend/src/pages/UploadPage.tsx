@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { FileUpload } from '@/components/FileUpload';
 import { Button } from '@/components/ui/button';
 import { Link, Navigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Upload } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, Zap, Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export function UploadPage() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [transcriptionMode, setTranscriptionMode] = useState<'fast' | 'quality'>('quality');
 
   if (isLoading) {
     return (
@@ -41,8 +44,44 @@ export function UploadPage() {
           </div>
         </div>
 
+        {/* Transcription mode toggle */}
+        <div className="neu-floating-card px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-medium">Transcription Mode</h2>
+              <p className="text-xs text-muted-foreground">Choose speed vs accuracy</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTranscriptionMode('fast')}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                transcriptionMode === 'fast'
+                  ? "bg-status-warning-soft text-status-warning border-2 border-status-warning"
+                  : "neu-button hover:bg-muted"
+              )}
+            >
+              <Zap className="h-4 w-4" />
+              Fast
+            </button>
+            <button
+              onClick={() => setTranscriptionMode('quality')}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                transcriptionMode === 'quality'
+                  ? "bg-status-purple-soft text-status-purple border-2 border-status-purple"
+                  : "neu-button hover:bg-muted"
+              )}
+            >
+              <Sparkles className="h-4 w-4" />
+              Quality
+            </button>
+          </div>
+        </div>
+
         {/* File upload component */}
-        <FileUpload />
+        <FileUpload transcriptionMode={transcriptionMode} />
       </div>
     </div>
   );

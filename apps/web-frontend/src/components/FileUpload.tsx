@@ -4,7 +4,8 @@ import {
   CloudUpload, 
   CheckCircle2, 
   FileAudio, 
-  FileVideo, 
+  FileVideo,
+  FileText,
   X, 
   Loader2,
   Upload
@@ -18,9 +19,10 @@ import { formatFileSize } from '@/lib/utils';
 
 interface FileUploadProps {
   onUploadComplete?: (id: string) => void;
+  transcriptionMode?: 'fast' | 'quality';
 }
 
-export function FileUpload({ onUploadComplete }: FileUploadProps) {
+export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: FileUploadProps) {
   const navigate = useNavigate();
   const { invalidateTranscriptions } = useTranscriptionCache();
   const [file, setFile] = useState<File | null>(null);
@@ -30,6 +32,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const [error, setError] = useState<string | null>(null);
 
   const acceptedTypes = [
+    // Audio formats
     'audio/mpeg',
     'audio/mp3',
     'audio/mp4',
@@ -38,13 +41,25 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     'audio/ogg',
     'audio/flac',
     'audio/webm',
+    // Video formats
     'video/mp4',
     'video/quicktime',
     'video/webm',
     'video/ogg',
+    // Document formats
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+    'application/vnd.ms-powerpoint', // .ppt
   ];
 
   const isVideoFile = (file: File) => file.type.startsWith('video/');
+  const isDocumentFile = (file: File) => 
+    file.type === 'application/pdf' ||
+    file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    file.type === 'application/vnd.ms-powerpoint' ||
+    file.name.endsWith('.pdf') ||
+    file.name.endsWith('.pptx') ||
+    file.name.endsWith('.ppt');
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -63,7 +78,12 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
-      if (acceptedTypes.includes(droppedFile.type) || droppedFile.type.startsWith('audio/') || droppedFile.type.startsWith('video/')) {
+      if (acceptedTypes.includes(droppedFile.type) || 
+          droppedFile.type.startsWith('audio/') || 
+          droppedFile.type.startsWith('video/') ||
+          droppedFile.name.endsWith('.pdf') ||
+          droppedFile.name.endsWith('.pptx') ||
+          droppedFile.name.endsWith('.ppt')) {
         setFile(droppedFile);
         if (!title) {
           // Use filename without extension as default title
@@ -71,7 +91,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           setTitle(defaultTitle);
         }
       } else {
-        setError('Please upload an audio or video file');
+        setError('Please upload an audio, video, or document file (PDF, PPTX)');
       }
     }
   }, [title]);
@@ -104,7 +124,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       const response = await api.uploadFile(file, title || 'Untitled Lecture');
       
       // Start transcription automatically
-      await api.startTranscription(response.id);
+      await api.startTranscription(response.id, transcriptionMode);
       
       // Invalidate cache so the new transcription shows up when navigating back
       invalidateTranscriptions();
@@ -126,10 +146,10 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Upload className="h-5 w-5 text-primary" />
-          Upload Audio or Video
+          Upload Audio, Video, or Documents
         </CardTitle>
         <CardDescription>
-          Upload a lecture recording to transcribe it into notes
+          Upload a lecture recording or document (PDF, PowerPoint) to transcribe it into notes
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -151,7 +171,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
         >
           <input
             type="file"
-            accept="audio/*,video/*"
+            accept="audio/*,video/*,.pdf,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             aria-hidden="true"
@@ -162,7 +182,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
               <div className="flex items-center justify-center">
                 <div className="relative">
                   <div className="w-16 h-16 rounded-2xl bg-status-success/10 flex items-center justify-center">
-                    {isVideoFile(file) ? (
+                    {isDocumentFile(file) ? (
+                      <FileText className="h-8 w-8 text-status-success" />
+                    ) : isVideoFile(file) ? (
                       <FileVideo className="h-8 w-8 text-status-success" />
                     ) : (
                       <FileAudio className="h-8 w-8 text-status-success" />
@@ -212,7 +234,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
                   {isDragging ? 'Drop your file here' : 'Drop your file here or click to browse'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Supports MP3, M4A, WAV, MP4, MOV, and more
+                  Supports MP3, M4A, WAV, MP4, MOV, PDF, PPTX, and more
                 </p>
               </div>
             </div>

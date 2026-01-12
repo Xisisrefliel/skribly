@@ -4,7 +4,7 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { r2Service } from '../services/r2.js';
 import { d1Service } from '../services/d1.js';
-import type { UploadResponse } from '@lecture/shared';
+import type { UploadResponse, SourceType } from '@lecture/shared';
 
 const router: RouterType = Router();
 
@@ -16,7 +16,7 @@ const upload = multer({
     fileSize: 500 * 1024 * 1024, // 500MB max file size
   },
   fileFilter: (_req, file, cb) => {
-    // Accept audio and video files
+    // Accept audio, video, and document files
     const allowedMimes = [
       // Audio formats
       'audio/mpeg',
@@ -41,6 +41,10 @@ const upload = multer({
       'video/ogg',
       'video/3gpp',
       'video/3gpp2',
+      // Document formats
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'application/vnd.ms-powerpoint', // .ppt (legacy)
     ];
     
     if (allowedMimes.includes(file.mimetype) || 
@@ -48,7 +52,7 @@ const upload = multer({
         file.mimetype.startsWith('video/')) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only audio and video files are allowed.`));
+      cb(new Error(`Invalid file type: ${file.mimetype}. Only audio, video, and document files are allowed.`));
     }
   },
 });
@@ -67,9 +71,35 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
 
     // Generate unique ID for this transcription
     const id = uuidv4();
-    const fileExtension = file.originalname.split('.').pop() || 'mp3';
-    const isVideo = file.mimetype.startsWith('video/');
-    const r2Key = `${isVideo ? 'video' : 'audio'}/${userId}/${id}/original.${fileExtension}`;
+    
+    // Determine source type and folder
+    const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || 'bin';
+    const mimeType = file.mimetype;
+
+    let sourceType: SourceType;
+    let baseFolder: string;
+
+    if (mimeType === 'application/pdf' || fileExtension === 'pdf') {
+      sourceType = 'pdf';
+      baseFolder = 'documents';
+    } else if (
+      mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      fileExtension === 'pptx'
+    ) {
+      sourceType = 'pptx';
+      baseFolder = 'documents';
+    } else if (mimeType === 'application/vnd.ms-powerpoint' || fileExtension === 'ppt') {
+      sourceType = 'ppt';
+      baseFolder = 'documents';
+    } else if (mimeType.startsWith('video/')) {
+      sourceType = 'video';
+      baseFolder = 'video';
+    } else {
+      sourceType = 'audio';
+      baseFolder = 'audio';
+    }
+
+    const r2Key = `${baseFolder}/${userId}/${id}/original.${fileExtension}`;
 
     // Upload to R2
     await r2Service.uploadFile(r2Key, file.buffer, file.mimetype);
@@ -91,11 +121,21 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       whisperModel: null, // Will be set during transcription
       detectedLanguage: null, // Will be set during structuring
       isPublic: false, // Default to private
+      sourceType,
+      mimeType: file.mimetype,
+      originalFileName: file.originalname,
     });
+
+    const humanType =
+      sourceType === 'pdf' || sourceType === 'pptx' || sourceType === 'ppt'
+        ? 'Document'
+        : sourceType === 'video'
+          ? 'Video'
+          : 'Audio';
 
     const response: UploadResponse = {
       id,
-      message: `${isVideo ? 'Video' : 'Audio'} uploaded successfully. Ready for transcription.`,
+      message: `${humanType} uploaded successfully. Ready for processing.`,
     };
 
     res.status(201).json(response);

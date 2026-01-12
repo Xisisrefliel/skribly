@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, Plus, Edit2, Trash2, FolderOpen, FolderIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderIcon } from 'lucide-react';
 import type { Folder as FolderType } from '@lecture/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';

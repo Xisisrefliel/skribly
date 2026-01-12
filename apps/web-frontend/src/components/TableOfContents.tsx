@@ -115,18 +115,19 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
   }
 
   return (
-    <Card className={cn('toc-card py-6', className)}>
-      <CardHeader className="pb-2">
+    <Card 
+      className={cn('toc-card py-6 flex flex-col !gap-2', className)}
+      style={maxHeight ? { maxHeight } : undefined}
+    >
+      <CardHeader className="pb-0 flex-shrink-0">
         <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
           <List className="h-4 w-4" />
           Contents
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain">
         <nav 
-          aria-label="Table of contents" 
-          className="toc-nav-scroll overflow-y-auto scrollbar-hide"
-          style={maxHeight ? { maxHeight } : undefined}
+          aria-label="Table of contents"
         >
           <ul className="space-y-1 text-sm">
             {headings.map((heading) => (

@@ -6,6 +6,7 @@ import { r2Service } from '../services/r2.js';
 import { transcriptionService } from '../services/transcription.js';
 import { llmService } from '../services/llm.js';
 import { pdfService } from '../services/pdf.js';
+import { documentService } from '../services/document.js';
 import { processAudioFile, cleanupTempDir } from '../services/audio.js';
 import type { TranscriptionListResponse, TranscriptionDetailResponse, TranscribeResponse, Quiz, FlashcardDeck } from '@lecture/shared';
 
@@ -62,7 +63,6 @@ router.get('/transcription/:id', async (req: Request, res: Response): Promise<vo
 router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.userId!;
-  let tempDir: string | null = null;
 
   try {
     // Get the transcription record
@@ -87,6 +87,16 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
       return;
     }
 
+    // Branch by sourceType
+    const { sourceType, audioUrl, mimeType } = transcription as typeof transcription & {
+      sourceType?: string;
+      mimeType?: string | null;
+    };
+
+    if (!audioUrl) {
+      throw new Error('No source file URL found');
+    }
+
     // Update status to processing
     await d1Service.updateTranscriptionStatus(id, 'processing', 0);
 
@@ -97,10 +107,21 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
       message: 'Transcription started' 
     } as TranscribeResponse);
 
-    // Process in background (don't await)
-    processTranscription(id, userId, transcription.audioUrl!).catch(err => {
-      console.error(`Background transcription error for ${id}:`, err);
-    });
+    if (sourceType === 'pdf' || sourceType === 'pptx' || sourceType === 'ppt') {
+      processDocumentTranscription(
+        id,
+        userId,
+        audioUrl,
+        sourceType as 'pdf' | 'pptx' | 'ppt',
+        mimeType
+      ).catch(err => {
+        console.error(`Background document processing error for ${id}:`, err);
+      });
+    } else {
+      processTranscription(id, userId, audioUrl).catch(err => {
+        console.error(`Background transcription error for ${id}:`, err);
+      });
+    }
 
   } catch (error) {
     console.error('Start transcription error:', error);
@@ -160,6 +181,97 @@ async function generateStudyMaterials(transcriptionId: string, content: string, 
 
   // Wait for both to complete
   await Promise.all([quizPromise, flashcardsPromise]);
+}
+
+/**
+ * Process from raw text onwards (LLM structuring, PDF generation, quiz/flashcards)
+ * Used by both audio/video transcription and document processing
+ */
+async function processFromRawText(
+  id: string,
+  rawText: string,
+  title: string,
+  whisperModel: string | null = null,
+  audioDuration: number | null = null
+): Promise<void> {
+  // Save raw transcription (use 0 for documents that don't have duration)
+  await d1Service.updateTranscriptionText(id, rawText, audioDuration ?? 0, whisperModel ?? undefined);
+  console.log(`Starting LLM structuring for ${id}`);
+
+  await d1Service.updateTranscriptionStatus(id, 'structuring', 0.90);
+  
+  try {
+    const { structuredText, detectedLanguage } = await llmService.structureTranscription(rawText, title);
+    
+    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.95);
+    await d1Service.updateStructuredText(id, structuredText, detectedLanguage);
+    console.log(`Structuring completed for ${id}, language: ${detectedLanguage}`);
+
+    if (structuredText) {
+      // Generate PDF
+      try {
+        console.log(`Starting background PDF generation for ${id}`);
+        const pdfResult = await pdfService.generateAndUpload(id, structuredText, title, 'structured');
+        await d1Service.updatePdfInfo(id, pdfResult.pdfKey);
+        console.log(`PDF generated and saved for ${id}: ${pdfResult.pdfKey}`);
+      } catch (pdfError) {
+        console.error(`Background PDF generation failed for ${id}:`, pdfError);
+      }
+
+      // Generate quiz and flashcards
+      await generateStudyMaterials(id, structuredText, title, detectedLanguage);
+    }
+  } catch (llmError) {
+    console.error(`LLM structuring failed for ${id}:`, llmError);
+    await d1Service.updateStructuredText(id, '');
+    console.log(`Processing completed for ${id} (without structuring)`);
+  }
+}
+
+/**
+ * Process document transcription (PDF/PPTX)
+ */
+async function processDocumentTranscription(
+  id: string,
+  userId: string,
+  sourceKey: string,
+  sourceType: 'pdf' | 'pptx' | 'ppt',
+  mimeType?: string | null
+): Promise<void> {
+  try {
+    const transcriptionRecord = await d1Service.getTranscription(id, userId);
+    const title = transcriptionRecord?.title || 'Untitled Document';
+
+    console.log(`Starting document processing for ${id}: "${title}", type=${sourceType}`);
+
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.05);
+
+    // Download document from R2
+    const buffer = await r2Service.getFile(sourceKey);
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
+
+    // Extract text from document
+    const rawText = await documentService.extractText(
+      buffer as Buffer,
+      sourceType,
+      mimeType
+    );
+
+    console.log(`Text extracted from ${sourceType}, length: ${rawText.length} chars`);
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.85);
+
+    // Process from raw text onwards (reuse common pipeline)
+    await processFromRawText(id, rawText, title, `document/${sourceType}`, null);
+
+  } catch (error) {
+    console.error(`Document processing failed for ${id}:`, error);
+    await d1Service.updateTranscriptionStatus(
+      id,
+      'error',
+      0,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
 }
 
 // Background transcription processing
@@ -236,41 +348,9 @@ async function processTranscription(id: string, userId: string, audioUrl: string
 
     // Save raw transcription and update status to structuring (85% -> 90%)
     await d1Service.updateTranscriptionStatus(id, 'processing', 0.87);
-    await d1Service.updateTranscriptionText(id, fullTranscription, totalDuration, whisperModel);
-    console.log(`Starting LLM structuring for ${id}`);
 
-    // Structure the transcription with LLM (90% - 95% progress)
-    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.90);
-    try {
-      const { structuredText, detectedLanguage } = await llmService.structureTranscription(fullTranscription, title);
-      
-      await d1Service.updateTranscriptionStatus(id, 'structuring', 0.95);
-      
-      // Save structured text, detected language, and mark as completed
-      await d1Service.updateStructuredText(id, structuredText, detectedLanguage);
-      console.log(`Structuring completed for ${id}, language: ${detectedLanguage}`);
-
-      // Generate PDF in background after structuring completes
-      if (structuredText) {
-        try {
-          console.log(`Starting background PDF generation for ${id}`);
-          const pdfResult = await pdfService.generateAndUpload(id, structuredText, title, 'structured');
-          await d1Service.updatePdfInfo(id, pdfResult.pdfKey);
-          console.log(`PDF generated and saved for ${id}: ${pdfResult.pdfKey}`);
-        } catch (pdfError) {
-          // PDF generation failure should not fail the transcription
-          console.error(`Background PDF generation failed for ${id}:`, pdfError);
-        }
-
-        // Generate quiz and flashcards in background
-        await generateStudyMaterials(id, structuredText, title, detectedLanguage);
-      }
-    } catch (llmError) {
-      // If LLM fails, still mark as completed but without structured text
-      console.error(`LLM structuring failed for ${id}:`, llmError);
-      await d1Service.updateStructuredText(id, ''); // Empty structured text, but still complete
-      console.log(`Transcription completed for ${id} (without structuring)`);
-    }
+    // Process from raw text onwards (reuse common pipeline)
+    await processFromRawText(id, fullTranscription, title, whisperModel, totalDuration);
 
   } catch (error) {
     console.error(`Transcription failed for ${id}:`, error);

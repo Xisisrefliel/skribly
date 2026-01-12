@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import type { Tag } from '@lecture/shared';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';

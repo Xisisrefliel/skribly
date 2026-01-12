@@ -19,7 +19,6 @@ interface FolderPickerProps {
 
 export function FolderPicker({ transcriptionId, currentFolderId, onFolderChange }: FolderPickerProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
   const fetchFolders = async () => {
     try {
@@ -27,8 +26,6 @@ export function FolderPicker({ transcriptionId, currentFolderId, onFolderChange 
       setFolders(data);
     } catch (error) {
       console.error('Failed to fetch folders:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 

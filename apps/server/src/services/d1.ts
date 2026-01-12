@@ -1,4 +1,4 @@
-import type { Transcription, TranscriptionStatus, Quiz, QuizQuestion, FlashcardDeck, Flashcard, Tag } from '@lecture/shared';
+import type { Transcription, TranscriptionStatus, Quiz, QuizQuestion, FlashcardDeck, Flashcard, Tag, SourceType } from '@lecture/shared';
 
 const D1_ACCOUNT_ID = process.env.D1_ACCOUNT_ID!;
 const D1_DATABASE_ID = process.env.D1_DATABASE_ID!;
@@ -56,6 +56,9 @@ interface TranscriptionRow {
   whisper_model: string | null;
   detected_language: string | null;
   is_public: number; // SQLite uses INTEGER for boolean (0 or 1)
+  source_type: string;
+  mime_type: string | null;
+  original_file_name: string | null;
   folder_id: string | null;
   created_at: string;
   updated_at: string;
@@ -78,6 +81,9 @@ function rowToTranscription(row: TranscriptionRow): Transcription {
     whisperModel: row.whisper_model,
     detectedLanguage: row.detected_language,
     isPublic: Boolean(row.is_public),
+    sourceType: (row.source_type as SourceType) || 'audio',
+    mimeType: row.mime_type,
+    originalFileName: row.original_file_name,
     folderId: row.folder_id || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -257,6 +263,9 @@ export const d1Service = {
         whisper_model TEXT,
         detected_language TEXT,
         is_public INTEGER DEFAULT 0,
+        source_type TEXT DEFAULT 'audio',
+        mime_type TEXT,
+        original_file_name TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
@@ -278,6 +287,24 @@ export const d1Service = {
     try {
       await executeQuery(`ALTER TABLE transcriptions ADD COLUMN is_public INTEGER DEFAULT 0`);
       console.log('Added is_public column to transcriptions table');
+    } catch {
+      // Column already exists
+    }
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN source_type TEXT DEFAULT 'audio'`);
+      console.log('Added source_type column to transcriptions table');
+    } catch {
+      // Column already exists
+    }
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN mime_type TEXT`);
+      console.log('Added mime_type column to transcriptions table');
+    } catch {
+      // Column already exists
+    }
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN original_file_name TEXT`);
+      console.log('Added original_file_name column to transcriptions table');
     } catch {
       // Column already exists
     }
@@ -454,8 +481,9 @@ export const d1Service = {
       `INSERT INTO transcriptions (
         id, user_id, title, audio_url, audio_duration, 
         transcription_text, structured_text, status, progress, error_message,
-        pdf_key, pdf_generated_at, whisper_model, detected_language, is_public, folder_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        pdf_key, pdf_generated_at, whisper_model, detected_language, is_public,
+        source_type, mime_type, original_file_name, folder_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.userId,
@@ -472,6 +500,9 @@ export const d1Service = {
         data.whisperModel,
         data.detectedLanguage,
         data.isPublic ? 1 : 0,
+        data.sourceType || 'audio',
+        data.mimeType || null,
+        data.originalFileName || null,
         data.folderId || null,
       ]
     );

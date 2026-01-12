@@ -20,6 +20,14 @@ export function Drawer({
   title,
   className,
 }: DrawerProps) {
+  const [hasBeenOpened, setHasBeenOpened] = React.useState(false)
+
+  React.useEffect(() => {
+    if (open) {
+      setHasBeenOpened(true)
+    }
+  }, [open])
+
   // Close on escape key
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -42,6 +50,10 @@ export function Drawer({
       document.body.style.overflow = ""
     }
   }, [open])
+
+  if (!hasBeenOpened) {
+    return null
+  }
 
   return (
     <>

@@ -6,6 +6,9 @@ export type TranscriptionStatus =
   | 'completed'    // Successfully transcribed and structured
   | 'error';       // Failed to transcribe
 
+// Source file type for transcriptions
+export type SourceType = 'audio' | 'video' | 'pdf' | 'pptx' | 'ppt';
+
 // Folder type
 export interface Folder {
   id: string;
@@ -41,6 +44,9 @@ export interface Transcription {
   whisperModel: string | null;   // Model used for transcription (e.g., 'whisper-large-v3')
   detectedLanguage: string | null; // Language detected in the transcription
   isPublic: boolean;             // Whether the transcription is publicly shareable
+  sourceType: SourceType;        // The type of source file (audio, video, pdf, pptx, ppt)
+  mimeType?: string | null;      // The original MIME type of the file
+  originalFileName?: string | null; // The original filename for display
   folderId?: string;             // Optional folder ID
   tags?: Tag[];                  // Array of tags associated with this transcription
   createdAt: string;             // ISO date string
