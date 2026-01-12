@@ -1,5 +1,16 @@
 import { useState } from 'react';
 import type { FlashcardDeck } from '@lecture/shared';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  RotateCcw, 
+  RefreshCw, 
+  Check, 
+  X,
+  Loader2,
+  MousePointerClick,
+  RotateCw
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -64,49 +75,53 @@ export function FlashcardView({ deck, onClose, onRegenerate, isRegenerating }: F
 
   // Summary view
   if (isComplete) {
+    const knownPercentage = Math.round((knownCards.size / deck.cards.length) * 100);
+    
     return (
-      <Card className="w-full max-w-2xl mx-auto">
+      <Card className="w-full max-w-2xl mx-auto animate-scale-in">
         <CardHeader className="text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-status-success-soft flex items-center justify-center mb-4">
+            <Check className="w-8 h-8 text-status-success" />
+          </div>
           <CardTitle className="text-2xl">Session Complete!</CardTitle>
           <CardDescription>Great job reviewing your flashcards</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-2 gap-4 text-center">
-            <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950">
-              <div className="text-3xl font-bold text-green-600">{knownCards.size}</div>
-              <p className="text-sm text-muted-foreground">Cards Known</p>
+            <div className="p-4 rounded-xl bg-status-success-soft border border-status-success/20">
+              <div className="text-3xl font-bold text-status-success">{knownCards.size}</div>
+              <p className="text-sm text-muted-foreground mt-1">Cards Known</p>
+              <p className="text-xs text-status-success font-medium">{knownPercentage}%</p>
             </div>
-            <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950">
-              <div className="text-3xl font-bold text-amber-600">{reviewCards.size}</div>
-              <p className="text-sm text-muted-foreground">Need Review</p>
+            <div className="p-4 rounded-xl bg-status-warning-soft border border-status-warning/20">
+              <div className="text-3xl font-bold text-status-warning">{reviewCards.size}</div>
+              <p className="text-sm text-muted-foreground mt-1">Need Review</p>
+              <p className="text-xs text-status-warning font-medium">{100 - knownPercentage}%</p>
             </div>
           </div>
           
           <div className="flex justify-center gap-3">
-            <Button variant="outline" onClick={handleRestart}>
+            <Button variant="outline" onClick={handleRestart} className="neu-button">
+              <RotateCcw className="w-4 h-4 mr-2" />
               Start Over
             </Button>
             {onRegenerate && (
-              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating}>
+              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating} className="neu-button">
                 {isRegenerating ? (
                   <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Regenerating...
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <RefreshCw className="w-4 h-4 mr-2" />
                     New Cards
                   </>
                 )}
               </Button>
             )}
-            <Button onClick={onClose}>
+            <Button onClick={onClose} className="neu-button-primary">
+              <Check className="w-4 h-4 mr-2" />
               Done
             </Button>
           </div>
@@ -116,7 +131,7 @@ export function FlashcardView({ deck, onClose, onRegenerate, isRegenerating }: F
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="w-full max-w-2xl mx-auto animate-fade-in-up">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -128,40 +143,50 @@ export function FlashcardView({ deck, onClose, onRegenerate, isRegenerating }: F
               )}
             </CardDescription>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} className="neu-button-subtle">
+            <X className="w-4 h-4 mr-1" />
             Exit
           </Button>
         </div>
         <Progress value={progress} className="h-2" />
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Flashcard */}
+        {/* Flashcard with 3D flip */}
         <div
           onClick={handleFlip}
-          className="relative min-h-[250px] cursor-pointer perspective-1000"
+          onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? handleFlip() : null}
+          role="button"
+          tabIndex={0}
+          aria-label={isFlipped ? `Answer: ${currentCard.back}. Click to show question.` : `Question: ${currentCard.front}. Click to reveal answer.`}
+          className="perspective-1000 cursor-pointer outline-none rounded-xl"
         >
-          <div
-            className={`
-              w-full min-h-[250px] p-6 rounded-xl border-2 transition-all duration-300
-              flex items-center justify-center text-center
-              ${isFlipped 
-                ? 'bg-primary/5 border-primary' 
-                : 'bg-muted/50 border-muted-foreground/20 hover:border-primary/50'
-              }
-            `}
-          >
-            <div className="space-y-2">
-              <Badge variant="outline" className="mb-2">
-                {isFlipped ? 'Answer' : 'Question'}
+          <div className={`flashcard-inner min-h-[250px] ${isFlipped ? 'flipped' : ''}`}>
+            {/* Front - Question */}
+            <div className="flashcard-face w-full min-h-[250px] p-6 rounded-xl border-2 border-muted-foreground/20 bg-gradient-to-br from-card to-muted/30 flex flex-col items-center justify-center text-center">
+              <Badge variant="outline" className="mb-4 text-muted-foreground">
+                Question
               </Badge>
-              <p className="text-xl font-medium">
-                {isFlipped ? currentCard.back : currentCard.front}
+              <p className="text-xl font-medium leading-relaxed">
+                {currentCard.front}
               </p>
-              {!isFlipped && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  Click to reveal answer
-                </p>
-              )}
+              <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
+                <MousePointerClick className="w-4 h-4" />
+                <span>Click to reveal answer</span>
+              </div>
+            </div>
+            
+            {/* Back - Answer */}
+            <div className="flashcard-face flashcard-back w-full min-h-[250px] p-6 rounded-xl border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10 flex flex-col items-center justify-center text-center">
+              <Badge className="mb-4 status-info">
+                Answer
+              </Badge>
+              <p className="text-xl font-medium leading-relaxed">
+                {currentCard.back}
+              </p>
+              <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
+                <RotateCw className="w-4 h-4" />
+                <span>Click to flip back</span>
+              </div>
             </div>
           </div>
         </div>
@@ -172,27 +197,26 @@ export function FlashcardView({ deck, onClose, onRegenerate, isRegenerating }: F
             variant="outline"
             onClick={goToPrevious}
             disabled={currentIndex === 0}
+            className="neu-button"
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="w-4 h-4 mr-1" />
             Previous
           </Button>
 
           {isFlipped && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 animate-scale-in">
               <Button
-                variant="outline"
-                className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                className="neu-button-warning"
                 onClick={handleMarkReview}
               >
+                <X className="w-4 h-4 mr-1" />
                 Need Review
               </Button>
               <Button
-                variant="outline"
-                className="border-green-500 text-green-600 hover:bg-green-50"
+                className="neu-button-success"
                 onClick={handleMarkKnown}
               >
+                <Check className="w-4 h-4 mr-1" />
                 Got It!
               </Button>
             </div>
@@ -202,22 +226,21 @@ export function FlashcardView({ deck, onClose, onRegenerate, isRegenerating }: F
             variant="outline"
             onClick={goToNext}
             disabled={currentIndex === deck.cards.length - 1}
+            className="neu-button"
           >
             Next
-            <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
 
         {/* Stats */}
-        <div className="flex justify-center gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
+        <div className="flex justify-center gap-6 text-sm text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-status-success" />
             Known: {knownCards.size}
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-status-warning" />
             Review: {reviewCards.size}
           </span>
         </div>

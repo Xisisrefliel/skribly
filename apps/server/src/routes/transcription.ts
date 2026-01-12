@@ -108,14 +108,14 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
 /**
  * Generate quiz and flashcards for a transcription in background (in parallel)
  */
-async function generateStudyMaterials(transcriptionId: string, content: string, title: string): Promise<void> {
-  console.log(`Starting study materials generation for ${transcriptionId} (parallel)`);
+async function generateStudyMaterials(transcriptionId: string, content: string, title: string, language: string = 'English'): Promise<void> {
+  console.log(`Starting study materials generation for ${transcriptionId} (parallel, language: ${language})`);
 
   // Generate quiz and flashcards in parallel
   const quizPromise = (async () => {
     try {
       console.log(`Generating quiz for ${transcriptionId}`);
-      const questions = await llmService.generateQuiz(content, title, 10);
+      const questions = await llmService.generateQuiz(content, title, 10, language);
       
       const quiz: Quiz = {
         id: uuidv4(),
@@ -135,7 +135,7 @@ async function generateStudyMaterials(transcriptionId: string, content: string, 
   const flashcardsPromise = (async () => {
     try {
       console.log(`Generating flashcards for ${transcriptionId}`);
-      const cards = await llmService.generateFlashcards(content, title, 20);
+      const cards = await llmService.generateFlashcards(content, title, 20, language);
       
       const deck: FlashcardDeck = {
         id: uuidv4(),
@@ -257,7 +257,7 @@ async function processTranscription(id: string, userId: string, audioUrl: string
         }
 
         // Generate quiz and flashcards in background
-        await generateStudyMaterials(id, structuredText, title);
+        await generateStudyMaterials(id, structuredText, title, detectedLanguage);
       }
     } catch (llmError) {
       // If LLM fails, still mark as completed but without structured text

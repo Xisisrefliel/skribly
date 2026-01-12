@@ -1,44 +1,39 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Transcription } from '@lecture/shared';
+import { Mic, AlertCircle, Clock, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api';
+import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+function StatusBadge({ status }: { status: TranscriptionStatus }) {
+  const styles = getStatusStyles(status);
+  
+  // Map status to CSS class for the skeuomorphic styling
+  const statusClass = {
+    pending: '',
+    processing: 'status-info',
+    structuring: 'status-purple',
+    completed: 'status-success',
+    error: '',
+  }[status];
 
-function formatDuration(seconds: number | null) {
-  if (!seconds) return null;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function getStatusBadge(status: Transcription['status']) {
-  switch (status) {
-    case 'pending':
-      return <Badge variant="secondary">Pending</Badge>;
-    case 'processing':
-      return <Badge variant="default" className="bg-blue-500">Processing</Badge>;
-    case 'structuring':
-      return <Badge variant="default" className="bg-purple-500">Structuring</Badge>;
-    case 'completed':
-      return <Badge variant="default" className="bg-green-500">Completed</Badge>;
-    case 'error':
-      return <Badge variant="destructive">Error</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
+  if (status === 'pending') {
+    return <Badge variant="secondary">{styles.label}</Badge>;
   }
+  
+  if (status === 'error') {
+    return <Badge variant="destructive">{styles.label}</Badge>;
+  }
+  
+  return (
+    <Badge className={statusClass}>
+      {styles.label}
+    </Badge>
+  );
 }
 
 interface TranscriptionListProps {
@@ -84,13 +79,21 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
+          <Card key={i} className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
             </CardHeader>
-            <CardContent>
-              <Skeleton className="h-4 w-full" />
+            <CardContent className="pt-0">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -100,9 +103,12 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
 
   if (error) {
     return (
-      <Card className="border-destructive">
+      <Card className="border-status-error/30 bg-status-error-soft">
         <CardContent className="pt-6">
-          <p className="text-destructive">{error}</p>
+          <div className="flex items-center gap-3 text-status-error">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <p>{error}</p>
+          </div>
         </CardContent>
       </Card>
     );
@@ -110,26 +116,18 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
 
   if (transcriptions.length === 0) {
     return (
-      <Card>
-        <CardContent className="pt-6 text-center">
-          <div className="space-y-2">
-            <svg
-              className="mx-auto h-12 w-12 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
-            <h3 className="font-semibold">No transcriptions yet</h3>
-            <p className="text-sm text-muted-foreground">
-              Upload an audio or video file to get started
-            </p>
+      <Card className="border-dashed">
+        <CardContent className="pt-8 pb-8 text-center">
+          <div className="space-y-3">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+              <Mic className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">No transcriptions yet</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload an audio or video file to get started
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -138,40 +136,64 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {transcriptions.map((transcription) => (
-        <Link key={transcription.id} to={`/transcription/${transcription.id}`}>
-          <Card className="h-full transition-colors hover:bg-muted/50">
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-2">
-                <CardTitle className="text-lg line-clamp-2">
-                  {transcription.title}
-                </CardTitle>
-                {getStatusBadge(transcription.status)}
+      {transcriptions.map((transcription, index) => (
+        <Link 
+          key={transcription.id} 
+          to={`/transcription/${transcription.id}`}
+          className="block outline-none"
+          style={{ animationDelay: `${index * 50}ms` }}
+        >
+          <Card className="h-full card-hover-lift group animate-fade-in-up">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
+                    {transcription.title}
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-2 mt-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{formatDate(transcription.createdAt)}</span>
+                    {transcription.audioDuration && (
+                      <>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span>{formatDuration(transcription.audioDuration)}</span>
+                      </>
+                    )}
+                  </CardDescription>
+                </div>
+                <StatusBadge status={transcription.status as TranscriptionStatus} />
               </div>
-              <CardDescription>
-                {formatDate(transcription.createdAt)}
-                {transcription.audioDuration && (
-                  <> · {formatDuration(transcription.audioDuration)}</>
-                )}
-              </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {(transcription.status === 'processing' || transcription.status === 'structuring') && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <Progress value={transcription.progress * 100} className="h-2" />
-                  <p className="text-xs text-muted-foreground">
-                    {Math.round(transcription.progress * 100)}%
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-info animate-pulse-soft" />
+                    {transcription.status === 'processing' ? 'Transcribing' : 'Structuring'}... {Math.round(transcription.progress * 100)}%
                   </p>
                 </div>
               )}
               {transcription.status === 'completed' && transcription.structuredText && (
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {transcription.structuredText.slice(0, 150)}...
-                </p>
+                <div className="flex items-start gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                    {transcription.structuredText.slice(0, 150)}...
+                  </p>
+                </div>
               )}
               {transcription.status === 'error' && transcription.errorMessage && (
-                <p className="text-sm text-destructive line-clamp-2">
-                  {transcription.errorMessage}
+                <div className="flex items-start gap-2 text-status-error">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm line-clamp-2">
+                    {transcription.errorMessage}
+                  </p>
+                </div>
+              )}
+              {transcription.status === 'pending' && (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+                  Waiting to start...
                 </p>
               )}
             </CardContent>

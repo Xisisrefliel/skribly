@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { TranscriptionDetail } from '@/components/TranscriptionDetail';
 import { Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 
 export function TranscriptionPage() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -8,7 +9,7 @@ export function TranscriptionPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }

@@ -1,9 +1,19 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { 
+  CloudUpload, 
+  CheckCircle2, 
+  FileAudio, 
+  FileVideo, 
+  X, 
+  Loader2,
+  Upload
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { formatFileSize } from '@/lib/utils';
 
 interface FileUploadProps {
   onUploadComplete?: (id: string) => void;
@@ -31,6 +41,8 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     'video/webm',
     'video/ogg',
   ];
+
+  const isVideoFile = (file: File) => file.type.startsWith('video/');
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -74,6 +86,12 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     }
   }, [title]);
 
+  const handleRemoveFile = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFile(null);
+    setTitle('');
+  }, []);
+
   const handleUpload = async () => {
     if (!file) return;
 
@@ -98,16 +116,13 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   return (
-    <Card className="w-full max-w-xl mx-auto">
+    <Card className="w-full max-w-xl mx-auto animate-fade-in-up">
       <CardHeader>
-        <CardTitle>Upload Audio or Video</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Upload className="h-5 w-5 text-primary" />
+          Upload Audio or Video
+        </CardTitle>
         <CardDescription>
           Upload a lecture recording to transcribe it into notes
         </CardDescription>
@@ -118,10 +133,15 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          role="button"
+          tabIndex={0}
+          aria-label="Drop zone for audio or video files. Click or drag and drop to upload."
           className={`
-            relative border-2 border-dashed rounded-lg p-8 text-center transition-colors
-            ${isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'}
-            ${file ? 'bg-muted/50' : 'hover:border-primary/50'}
+            drop-zone relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
+            transition-all duration-200 ease-out
+            outline-none
+            ${isDragging ? 'drop-zone-active border-primary' : 'border-muted-foreground/25'}
+            ${file ? 'bg-status-success-soft border-status-success/50' : 'hover:border-primary/50 hover:bg-muted/30'}
           `}
         >
           <input
@@ -129,61 +149,67 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
             accept="audio/*,video/*"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            aria-hidden="true"
           />
           
           {file ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2 text-primary">
-                <svg
-                  className="h-8 w-8"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+            <div className="space-y-3 animate-scale-in">
+              <div className="flex items-center justify-center">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-2xl bg-status-success/10 flex items-center justify-center">
+                    {isVideoFile(file) ? (
+                      <FileVideo className="h-8 w-8 text-status-success" />
+                    ) : (
+                      <FileAudio className="h-8 w-8 text-status-success" />
+                    )}
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-status-success flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-white" />
+                  </div>
+                </div>
               </div>
-              <p className="font-medium">{file.name}</p>
-              <p className="text-sm text-muted-foreground">
-                {formatFileSize(file.size)}
-              </p>
+              <div>
+                <p className="font-medium text-foreground truncate max-w-[280px] mx-auto">
+                  {file.name}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {formatFileSize(file.size)}
+                </p>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFile(null);
-                }}
+                onClick={handleRemoveFile}
+                className="neu-button-subtle text-muted-foreground hover:text-destructive"
               >
+                <X className="h-4 w-4 mr-1" />
                 Remove
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center justify-center">
-                <svg
-                  className="h-12 w-12 text-muted-foreground"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
+                <div className={`
+                  w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-200
+                  ${isDragging 
+                    ? 'bg-primary/20 scale-110' 
+                    : 'bg-muted'
+                  }
+                `}>
+                  <CloudUpload className={`
+                    h-8 w-8 transition-colors duration-200
+                    ${isDragging ? 'text-primary' : 'text-muted-foreground'}
+                  `} />
+                </div>
               </div>
-              <p className="font-medium">Drop your file here or click to browse</p>
-              <p className="text-sm text-muted-foreground">
-                Supports MP3, M4A, WAV, MP4, MOV, and more
-              </p>
+              <div>
+                <p className="font-medium text-foreground">
+                  {isDragging ? 'Drop your file here' : 'Drop your file here or click to browse'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Supports MP3, M4A, WAV, MP4, MOV, and more
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -198,45 +224,38 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
             placeholder="Enter a title for your lecture"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            aria-describedby={error ? "upload-error" : undefined}
           />
         </div>
 
         {/* Error message */}
         {error && (
-          <p className="text-sm text-destructive">{error}</p>
+          <div 
+            id="upload-error"
+            role="alert"
+            className="p-3 rounded-lg bg-status-error-soft border border-status-error/20 text-status-error text-sm"
+          >
+            {error}
+          </div>
         )}
 
         {/* Upload button */}
         <Button
           onClick={handleUpload}
           disabled={!file || isUploading}
-          className="w-full"
+          className="w-full neu-button-primary"
+          size="lg"
         >
           {isUploading ? (
             <>
-              <svg
-                className="animate-spin -ml-1 mr-2 h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Uploading...
             </>
           ) : (
-            'Upload & Transcribe'
+            <>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload & Transcribe
+            </>
           )}
         </Button>
       </CardContent>

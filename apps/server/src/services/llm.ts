@@ -195,12 +195,18 @@ export const llmService = {
   /**
    * Generate quiz questions from lecture content
    */
-  async generateQuiz(content: string, title: string, questionCount: number = 10): Promise<QuizQuestion[]> {
-    console.log(`Generating ${questionCount} quiz questions for: ${title}`);
+  async generateQuiz(content: string, title: string, questionCount: number = 10, language: string = 'English'): Promise<QuizQuestion[]> {
+    console.log(`Generating ${questionCount} quiz questions for: ${title} (language: ${language})`);
+
+    const languageInstruction = language && language !== 'Unknown' 
+      ? `CRITICAL: Generate ALL questions, options, and explanations in ${language}. The content is in ${language}, so the quiz must also be entirely in ${language}.`
+      : '';
 
     const prompt = `You are an expert educator creating a quiz to test understanding of lecture material.
 
 Generate exactly ${questionCount} multiple-choice questions based on the following lecture content.
+
+${languageInstruction}
 
 Requirements:
 - Each question should test understanding of key concepts, not just memorization
@@ -209,6 +215,7 @@ Requirements:
 - Only one option should be correct
 - Provide a brief explanation for why the correct answer is right
 - Questions should cover the most important topics from the lecture
+- ALL text (questions, options, explanations) must be in ${language || 'the same language as the content'}
 
 Output ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
@@ -267,30 +274,37 @@ ${content.substring(0, 50000)}`;
   /**
    * Generate flashcards from lecture content
    */
-  async generateFlashcards(content: string, title: string, cardCount: number = 20): Promise<Flashcard[]> {
-    console.log(`Generating ${cardCount} flashcards for: ${title}`);
+  async generateFlashcards(content: string, title: string, cardCount: number = 20, language: string = 'English'): Promise<Flashcard[]> {
+    console.log(`Generating ${cardCount} flashcards for: ${title} (language: ${language})`);
+
+    const languageInstruction = language && language !== 'Unknown' 
+      ? `CRITICAL: Generate ALL flashcard content (front, back, category) in ${language}. The content is in ${language}, so the flashcards must also be entirely in ${language}.`
+      : '';
 
     const prompt = `You are an expert educator creating flashcards to help students memorize key concepts from a lecture.
 
 Generate exactly ${cardCount} flashcards based on the following lecture content.
+
+${languageInstruction}
 
 Requirements:
 - Focus on the most important concepts, definitions, and facts
 - Front side should be a question or concept name
 - Back side should be a clear, concise answer or explanation
 - Include a mix of:
-  - Definitions (What is X?)
-  - Concepts (Explain the concept of X)
-  - Key facts (What are the main characteristics of X?)
-  - Relationships (How does X relate to Y?)
+  - Definitions (e.g., "What is X?" / "${language === 'Turkish' ? 'X nedir?' : 'What is X?'}")
+  - Concepts (e.g., "Explain the concept of X" / "${language === 'Turkish' ? 'X kavramını açıklayın' : 'Explain X'}")
+  - Key facts (e.g., "What are the main characteristics of X?")
+  - Relationships (e.g., "How does X relate to Y?")
 - Optionally categorize cards by topic/section
+- ALL text must be in ${language || 'the same language as the content'}
 
 Output ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
   "cards": [
     {
-      "front": "What is [concept]?",
-      "back": "Clear definition or explanation",
+      "front": "Question in ${language || 'content language'}",
+      "back": "Answer in ${language || 'content language'}",
       "category": "Optional topic/section name"
     }
   ]
