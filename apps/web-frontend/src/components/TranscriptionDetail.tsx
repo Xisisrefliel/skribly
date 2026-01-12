@@ -13,7 +13,11 @@ import {
   Globe,
   AlertCircle,
   Eye,
-  FileText
+  FileText,
+  Share2,
+  Check,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +29,7 @@ import { FlashcardView } from '@/components/FlashcardView';
 import { Markdown } from '@/components/Markdown';
 import { TableOfContents } from '@/components/TableOfContents';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 
 function StatusBadge({ status }: { status: TranscriptionStatus }) {
@@ -122,6 +127,7 @@ function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
 export function TranscriptionDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [transcription, setTranscription] = useState<Transcription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,12 +144,26 @@ export function TranscriptionDetail() {
   const [isLoadingFlashcards, setIsLoadingFlashcards] = useState(false);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
 
   const fetchTranscription = async () => {
     if (!id) return;
     try {
-      const data = await api.getTranscription(id);
-      setTranscription(data);
+      // Try authenticated route first
+      try {
+        const data = await api.getTranscription(id);
+        setTranscription(data);
+      } catch (authErr) {
+        // If auth fails, try public route
+        try {
+          const data = await api.getPublicTranscription(id);
+          setTranscription(data);
+        } catch (publicErr) {
+          // Both failed, show error
+          throw authErr;
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load transcription');
     } finally {
@@ -318,6 +338,47 @@ export function TranscriptionDetail() {
     }
   };
 
+  const handleShare = async () => {
+    if (!id || !transcription) return;
+    
+    // Use public URL if transcription is public, otherwise use regular URL
+    const baseUrl = window.location.origin;
+    const url = transcription.isPublic 
+      ? `${baseUrl}/transcription/${id}` // Public URL (will be handled by public route)
+      : window.location.href; // Regular URL (requires auth)
+    
+    try {
+      await navigator.clipboard.writeText(url);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
+  const handleToggleVisibility = async () => {
+    if (!id || !transcription || !isAuthenticated) return;
+    
+    const newIsPublic = !transcription.isPublic;
+    setIsUpdatingVisibility(true);
+    try {
+      await api.updateTranscription(id, { isPublic: newIsPublic });
+      setTranscription(prev => prev ? { ...prev, isPublic: newIsPublic } : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update visibility');
+    } finally {
+      setIsUpdatingVisibility(false);
+    }
+  };
+
   // Show Quiz view
   if (studyMode === 'quiz' && quiz) {
     return (
@@ -406,22 +467,34 @@ export function TranscriptionDetail() {
   return (
     <div className="max-w-6xl mx-auto animate-fade-in-up">
       <div className="flex gap-8">
-        {/* Left sidebar - Table of Contents (hidden on mobile) */}
-        {isCompleted && content && (
-          <aside className="toc-sidebar hidden lg:block w-56 flex-shrink-0">
-            <TableOfContents content={content} />
-          </aside>
-        )}
+        {/* Left sidebar - Back button and Table of Contents (hidden on mobile) */}
+        <aside className="toc-sidebar hidden lg:block w-56 flex-shrink-0 sticky top-6 self-start max-h-[calc(100vh-3rem)]">
+          <div className="mb-4">
+            <Link to="/">
+              <Button variant="outline" className="neu-button w-full">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+            </Link>
+          </div>
+          {isCompleted && content && (
+            <TableOfContents content={content} maxHeight="calc(100vh - 10rem)" />
+          )}
+        </aside>
 
         {/* Main content area */}
         <main className="flex-1 min-w-0 document-content">
           {/* Editable Title */}
           <div className="mb-2">
-            <EditableTitle 
-              value={transcription.title} 
-              onChange={handleTitleChange}
-              isLoading={isSavingTitle}
-            />
+            {isAuthenticated ? (
+              <EditableTitle 
+                value={transcription.title} 
+                onChange={handleTitleChange}
+                isLoading={isSavingTitle}
+              />
+            ) : (
+              <h1 className="text-2xl font-bold">{transcription.title}</h1>
+            )}
           </div>
 
           {/* Status badge (inline with title area when not completed) */}
@@ -452,87 +525,123 @@ export function TranscriptionDetail() {
           </div>
 
           {/* Action bar */}
-          <div className="flex flex-wrap gap-2 py-4 border-b border-border mb-6">
-            <Link to="/">
-              <Button variant="outline" className="neu-button">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
+          <div className="flex items-center justify-between py-4 border-b border-border mb-6">
+            {/* Left side - Study actions */}
+            <div className="flex items-center gap-1.5">
+              {isCompleted && isAuthenticated && (
+                <>
+                  <Button
+                    onClick={handleGenerateQuiz}
+                    disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
+                    size="sm"
+                    className="neu-button-info"
+                    title={quiz ? 'Continue Quiz' : 'Take Quiz'}
+                  >
+                    {isLoadingQuiz || isGeneratingQuiz ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ClipboardCheck className="h-4 w-4" />
+                    )}
+                    <span className="hidden sm:inline ml-1.5">Quiz</span>
+                  </Button>
 
-            {isCompleted && (
-              <>
-                <Button
-                  onClick={handleGenerateQuiz}
-                  disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
-                  className="neu-button-info"
-                >
-                  {isLoadingQuiz || isGeneratingQuiz ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      {isLoadingQuiz ? 'Loading...' : 'Generating...'}
-                    </>
-                  ) : (
-                    <>
-                      <ClipboardCheck className="h-4 w-4 mr-2" />
-                      {quiz ? 'Continue Quiz' : 'Take Quiz'}
-                    </>
-                  )}
+                  <Button
+                    onClick={handleGenerateFlashcards}
+                    disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
+                    size="sm"
+                    className="neu-button-purple"
+                    title={flashcards ? 'Continue Flashcards' : 'Study Flashcards'}
+                  >
+                    {isLoadingFlashcards || isGeneratingFlashcards ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Layers className="h-4 w-4" />
+                    )}
+                    <span className="hidden sm:inline ml-1.5">Flashcards</span>
+                  </Button>
+                </>
+              )}
+
+              {isAuthenticated && transcription.status === 'error' && (
+                <Button onClick={handleRetry} variant="outline" size="sm" className="neu-button" title="Retry transcription">
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1.5">Retry</span>
                 </Button>
+              )}
+            </div>
 
-                <Button
-                  onClick={handleGenerateFlashcards}
-                  disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
-                  className="neu-button-purple"
-                >
-                  {isLoadingFlashcards || isGeneratingFlashcards ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      {isLoadingFlashcards ? 'Loading...' : 'Generating...'}
-                    </>
-                  ) : (
-                    <>
-                      <Layers className="h-4 w-4 mr-2" />
-                      {flashcards ? 'Continue Flashcards' : 'Study Flashcards'}
-                    </>
-                  )}
-                </Button>
-
+            {/* Right side - Management actions */}
+            <div className="flex items-center gap-1.5">
+              {isCompleted && isAuthenticated && (
                 <Button
                   variant="outline"
                   onClick={handleDownloadPdf}
                   disabled={isGeneratingPdf}
+                  size="sm"
                   className="neu-button"
+                  title="Download PDF"
                 >
                   {isGeneratingPdf ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Download className="h-4 w-4 mr-2" />
+                    <Download className="h-4 w-4" />
                   )}
-                  {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                  <span className="hidden sm:inline ml-1.5">PDF</span>
                 </Button>
-              </>
-            )}
-
-            {transcription.status === 'error' && (
-              <Button onClick={handleRetry} variant="outline" className="neu-button">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
-              </Button>
-            )}
-
-            <Button
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="neu-button-destructive"
-            >
-              {isDeleting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
               )}
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
+
+              <Button
+                onClick={handleShare}
+                variant="outline"
+                size="sm"
+                className="neu-button"
+                title={transcription.isPublic ? 'Copy public shareable link' : 'Copy link (requires sign-in)'}
+              >
+                {isCopied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Share2 className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline ml-1.5">{isCopied ? 'Copied!' : 'Share'}</span>
+              </Button>
+
+              {isAuthenticated && (
+                <Button
+                  onClick={handleToggleVisibility}
+                  variant="outline"
+                  disabled={isUpdatingVisibility}
+                  size="sm"
+                  className="neu-button"
+                  title={transcription.isPublic ? 'Make private' : 'Make public'}
+                >
+                  {isUpdatingVisibility ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : transcription.isPublic ? (
+                    <Unlock className="h-4 w-4" />
+                  ) : (
+                    <Lock className="h-4 w-4" />
+                  )}
+                  <span className="hidden sm:inline ml-1.5">{transcription.isPublic ? 'Public' : 'Private'}</span>
+                </Button>
+              )}
+
+              {isAuthenticated && (
+                <Button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  size="sm"
+                  className="neu-button-destructive"
+                  title="Delete transcription"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  <span className="hidden sm:inline ml-1.5">Delete</span>
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Error message */}

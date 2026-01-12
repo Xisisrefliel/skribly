@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { api } from '@/lib/api';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useSession, signIn, signOut } from '@/lib/auth-client';
 
 interface User {
   id: string;
@@ -14,75 +14,43 @@ interface AuthContextType {
   isAuthenticated: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  checkAuth: () => Promise<void>;
+  refetch: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Use better-auth's useSession hook - handles all session management automatically
+  const { data: session, isPending, refetch } = useSession();
 
-  const checkAuth = useCallback(async () => {
-    try {
-      const currentUser = await api.getCurrentUser();
-      setUser(currentUser);
-    } catch {
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const user = session?.user as User | null;
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  const signIn = async () => {
-    // Use better-auth's social sign-in endpoint
-    // It's a POST that returns a URL to redirect to
-    const serverUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-    
-    try {
-      const response = await fetch(`${serverUrl}/api/auth/sign-in/social`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Important for cookies
-        body: JSON.stringify({
-          provider: 'google',
-          callbackURL: window.location.origin,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.url && data.redirect) {
-        // Redirect to Google OAuth
-        window.location.href = data.url;
-      } else if (data.error) {
-        console.error('Sign in error:', data.error);
-      }
-    } catch (error) {
-      console.error('Sign in failed:', error);
-    }
+  const handleSignIn = async () => {
+    // better-auth handles the entire OAuth flow:
+    // 1. Redirects to Google
+    // 2. Handles callback
+    // 3. Creates session
+    // 4. Sets cookies
+    // 5. Redirects back to callbackURL
+    await signIn.social({
+      provider: 'google',
+      callbackURL: window.location.origin,
+    });
   };
 
-  const signOut = async () => {
-    await api.signOut();
-    setUser(null);
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading,
+        isLoading: isPending,
         isAuthenticated: !!user,
-        signIn,
-        signOut,
-        checkAuth,
+        signIn: handleSignIn,
+        signOut: handleSignOut,
+        refetch,
       }}
     >
       {children}

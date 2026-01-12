@@ -3,7 +3,7 @@ import type { Router as RouterType } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { d1Service } from '../services/d1.js';
 import { llmService } from '../services/llm.js';
-import type { Quiz, FlashcardDeck, GenerateQuizResponse, GenerateFlashcardsResponse } from '@lecture/shared';
+import type { Quiz, FlashcardDeck, GenerateQuizResponse, GenerateFlashcardsResponse, QuizAttempt, QuizAttemptResponse, QuizAttemptsListResponse, SaveQuizAttemptRequest } from '@lecture/shared';
 
 const router: RouterType = Router();
 
@@ -192,6 +192,83 @@ router.post('/transcription/:id/flashcards', async (req: Request, res: Response)
     console.error('Generate flashcards error:', error);
     res.status(500).json({
       error: 'Failed to generate flashcards',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// ============================================
+// Quiz Attempt endpoints
+// ============================================
+
+// POST /api/quiz/:quizId/attempt - Save a quiz attempt
+router.post('/quiz/:quizId/attempt', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { quizId } = req.params;
+    const { score, totalQuestions, answers } = req.body as SaveQuizAttemptRequest;
+
+    // Validate input
+    if (typeof score !== 'number' || typeof totalQuestions !== 'number' || !Array.isArray(answers)) {
+      res.status(400).json({ error: 'Bad Request', message: 'Invalid request body' });
+      return;
+    }
+
+    const attempt: QuizAttempt = {
+      id: uuidv4(),
+      quizId,
+      userId,
+      score,
+      totalQuestions,
+      answers,
+      completedAt: new Date().toISOString(),
+    };
+
+    await d1Service.saveQuizAttempt(attempt);
+
+    const response: QuizAttemptResponse = { attempt };
+    res.json(response);
+  } catch (error) {
+    console.error('Save quiz attempt error:', error);
+    res.status(500).json({
+      error: 'Failed to save quiz attempt',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// GET /api/quiz/:quizId/attempts - Get all attempts for a quiz
+router.get('/quiz/:quizId/attempts', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { quizId } = req.params;
+
+    const attempts = await d1Service.getQuizAttempts(quizId, userId);
+
+    const response: QuizAttemptsListResponse = { attempts };
+    res.json(response);
+  } catch (error) {
+    console.error('Get quiz attempts error:', error);
+    res.status(500).json({
+      error: 'Failed to get quiz attempts',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// GET /api/quiz-attempts - Get all quiz attempts for the current user
+router.get('/quiz-attempts', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+
+    const attempts = await d1Service.getAllQuizAttemptsByUser(userId);
+
+    const response: QuizAttemptsListResponse = { attempts };
+    res.json(response);
+  } catch (error) {
+    console.error('Get all quiz attempts error:', error);
+    res.status(500).json({
+      error: 'Failed to get quiz attempts',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

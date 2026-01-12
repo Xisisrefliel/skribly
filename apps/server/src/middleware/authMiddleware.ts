@@ -1,8 +1,12 @@
 /**
  * Authentication middleware using better-auth
  * 
- * This middleware validates session cookies and extracts user info
+ * This middleware validates session cookies or Bearer tokens and extracts user info
  * for use in protected routes.
+ * 
+ * Supports both:
+ * - Cookie-based auth (for same-origin or iOS apps)
+ * - Bearer token auth (for cross-origin web apps)
  */
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -24,6 +28,22 @@ declare global {
 }
 
 /**
+ * Extract session token from request - supports both cookies and Bearer tokens
+ */
+function getSessionTokenFromRequest(req: Request): string | null {
+  // Check for Bearer token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  
+  // Fall back to cookie
+  const cookieName = 'lecture.session_token';
+  const cookies = req.cookies || {};
+  return cookies[cookieName] || null;
+}
+
+/**
  * Auth middleware that requires authentication and extracts userId
  * Use this on protected routes
  */
@@ -36,9 +56,28 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    // Get session from better-auth using the request headers/cookies
+    // Get session token from request (supports both cookies and Bearer tokens)
+    const sessionToken = getSessionTokenFromRequest(req);
+    
+    // Create headers for better-auth
+    const headers: Record<string, string> = {};
+    
+    if (sessionToken) {
+      // If we have a Bearer token, convert it to a cookie header for better-auth
+      headers['cookie'] = `lecture.session_token=${sessionToken}`;
+    } else {
+      // Use the original cookie header
+      headers['cookie'] = req.headers.cookie || '';
+    }
+    
+    // Copy other relevant headers
+    if (req.headers.origin) {
+      headers['origin'] = req.headers.origin as string;
+    }
+
+    // Get session from better-auth
     const session = await auth.api.getSession({
-      headers: req.headers as any,
+      headers: headers as any,
     });
 
     if (!session || !session.user) {
@@ -73,8 +112,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const sessionToken = getSessionTokenFromRequest(req);
+    
+    const headers: Record<string, string> = {};
+    if (sessionToken) {
+      headers['cookie'] = `lecture.session_token=${sessionToken}`;
+    } else {
+      headers['cookie'] = req.headers.cookie || '';
+    }
+    
     const session = await auth.api.getSession({
-      headers: req.headers as any,
+      headers: headers as any,
     });
 
     if (session?.user) {

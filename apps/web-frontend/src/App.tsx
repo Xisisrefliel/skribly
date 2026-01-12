@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { TranscriptionCacheProvider } from '@/contexts/TranscriptionCacheContext';
 import { Layout } from '@/components/Layout';
 import { HomePage } from '@/pages/HomePage';
 import { UploadPage } from '@/pages/UploadPage';
@@ -10,7 +11,8 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
+        <TranscriptionCacheProvider>
+          <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
               <Route path="/" element={<HomePage />} />
@@ -18,7 +20,8 @@ function App() {
               <Route path="/transcription/:id" element={<TranscriptionPage />} />
             </Route>
           </Routes>
-        </BrowserRouter>
+          </BrowserRouter>
+        </TranscriptionCacheProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -8,6 +8,14 @@ import type {
   FlashcardDeck,
   GenerateQuizResponse,
   GenerateFlashcardsResponse,
+  Folder,
+  Tag,
+  FolderListResponse,
+  TagListResponse,
+  QuizAttempt,
+  QuizAttemptResponse,
+  QuizAttemptsListResponse,
+  SaveQuizAttemptRequest,
 } from '@lecture/shared';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -24,7 +32,7 @@ class ApiClient {
   ): Promise<T> {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      credentials: 'include',
+      credentials: 'include', // Send cookies with requests
       headers: {
         ...options.headers,
       },
@@ -41,30 +49,18 @@ class ApiClient {
     return response.json();
   }
 
-  // Auth
-  async getCurrentUser(): Promise<{ id: string; name: string; email: string; image?: string } | null> {
-    try {
-      const response = await fetch(`${API_BASE}/api/auth/get-session`, {
-        credentials: 'include',
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
-      return data.user || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async signOut(): Promise<void> {
-    await fetch(`${API_BASE}/api/auth/sign-out`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-  }
-
   // Transcriptions
-  async getTranscriptions(): Promise<Transcription[]> {
-    const response = await this.request<TranscriptionListResponse>('/api/transcriptions');
+  async getTranscriptions(folderId?: string | null, tagIds?: string[]): Promise<Transcription[]> {
+    const params = new URLSearchParams();
+    if (folderId !== undefined) {
+      params.append('folderId', folderId === null ? 'null' : folderId);
+    }
+    if (tagIds && tagIds.length > 0) {
+      tagIds.forEach(tagId => params.append('tagIds', tagId));
+    }
+    const queryString = params.toString();
+    const url = queryString ? `/api/transcriptions?${queryString}` : '/api/transcriptions';
+    const response = await this.request<TranscriptionListResponse>(url);
     return response.transcriptions;
   }
 
@@ -96,7 +92,7 @@ class ApiClient {
     });
   }
 
-  async updateTranscription(id: string, data: { title?: string }): Promise<void> {
+  async updateTranscription(id: string, data: { title?: string; isPublic?: boolean; folderId?: string | null; tagIds?: string[] }): Promise<void> {
     await this.request(`/api/transcription/${id}`, {
       method: 'PATCH',
       headers: {
@@ -104,6 +100,11 @@ class ApiClient {
       },
       body: JSON.stringify(data),
     });
+  }
+
+  async getPublicTranscription(id: string): Promise<Transcription> {
+    const response = await this.request<TranscriptionDetailResponse>(`/api/public/transcription/${id}`);
+    return response.transcription;
   }
 
   async generatePdf(id: string, type: 'structured' | 'raw' = 'structured'): Promise<{ pdfUrl: string }> {
@@ -185,6 +186,96 @@ class ApiClient {
 
   async generateFlashcards(transcriptionId: string, cardCount: number = 20): Promise<FlashcardDeck> {
     return this.regenerateFlashcards(transcriptionId, cardCount);
+  }
+
+  // Folders
+  async getFolders(): Promise<Folder[]> {
+    const response = await this.request<FolderListResponse>('/api/folders');
+    return response.folders;
+  }
+
+  async createFolder(name: string, color?: string): Promise<Folder> {
+    const response = await this.request<{ folder: Folder }>('/api/folders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, color }),
+    });
+    return response.folder;
+  }
+
+  async updateFolder(id: string, data: { name?: string; color?: string }): Promise<Folder> {
+    const response = await this.request<{ folder: Folder }>(`/api/folders/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response.folder;
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    await this.request(`/api/folders/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Tags
+  async getTags(): Promise<Tag[]> {
+    const response = await this.request<TagListResponse>('/api/tags');
+    return response.tags;
+  }
+
+  async createTag(name: string, color?: string): Promise<Tag> {
+    const response = await this.request<{ tag: Tag }>('/api/tags', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, color }),
+    });
+    return response.tag;
+  }
+
+  async updateTag(id: string, data: { name?: string; color?: string }): Promise<Tag> {
+    const response = await this.request<{ tag: Tag }>(`/api/tags/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response.tag;
+  }
+
+  async deleteTag(id: string): Promise<void> {
+    await this.request(`/api/tags/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Quiz Attempts
+  async saveQuizAttempt(data: SaveQuizAttemptRequest): Promise<QuizAttempt> {
+    const response = await this.request<QuizAttemptResponse>(`/api/quiz/${data.quizId}/attempt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response.attempt;
+  }
+
+  async getQuizAttempts(quizId: string): Promise<QuizAttempt[]> {
+    const response = await this.request<QuizAttemptsListResponse>(`/api/quiz/${quizId}/attempts`);
+    return response.attempts;
+  }
+
+  async getAllQuizAttempts(): Promise<QuizAttempt[]> {
+    const response = await this.request<QuizAttemptsListResponse>('/api/quiz-attempts');
+    return response.attempts;
   }
 }
 

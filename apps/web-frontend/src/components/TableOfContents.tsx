@@ -12,6 +12,7 @@ export interface TOCItem {
 interface TableOfContentsProps {
   content: string;
   className?: string;
+  maxHeight?: string;
 }
 
 /**
@@ -64,7 +65,7 @@ export function extractHeadings(content: string): TOCItem[] {
   return headings;
 }
 
-export function TableOfContents({ content, className }: TableOfContentsProps) {
+export function TableOfContents({ content, className, maxHeight }: TableOfContentsProps) {
   const [headings, setHeadings] = useState<TOCItem[]>([]);
   const [activeId, setActiveId] = useState<string>('');
 
@@ -114,7 +115,7 @@ export function TableOfContents({ content, className }: TableOfContentsProps) {
   }
 
   return (
-    <Card className={cn('toc-card', className)}>
+    <Card className={cn('toc-card py-6', className)}>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
           <List className="h-4 w-4" />
@@ -122,7 +123,11 @@ export function TableOfContents({ content, className }: TableOfContentsProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        <nav aria-label="Table of contents">
+        <nav 
+          aria-label="Table of contents" 
+          className="toc-nav-scroll overflow-y-auto scrollbar-hide"
+          style={maxHeight ? { maxHeight } : undefined}
+        >
           <ul className="space-y-1 text-sm">
             {headings.map((heading) => (
               <li

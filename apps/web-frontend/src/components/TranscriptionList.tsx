@@ -1,54 +1,54 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
 import type { Transcription } from '@lecture/shared';
-import { Mic, AlertCircle, Clock, FileText } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Mic, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Progress } from '@/components/ui/progress';
+import { TranscriptionCard } from '@/components/TranscriptionCard';
+import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 import { api } from '@/lib/api';
-import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
-
-function StatusBadge({ status }: { status: TranscriptionStatus }) {
-  const styles = getStatusStyles(status);
-  
-  // Map status to CSS class for the skeuomorphic styling
-  const statusClass = {
-    pending: '',
-    processing: 'status-info',
-    structuring: 'status-purple',
-    completed: 'status-success',
-    error: '',
-  }[status];
-
-  if (status === 'pending') {
-    return <Badge variant="secondary">{styles.label}</Badge>;
-  }
-  
-  if (status === 'error') {
-    return <Badge variant="destructive">{styles.label}</Badge>;
-  }
-  
-  return (
-    <Badge className={statusClass}>
-      {styles.label}
-    </Badge>
-  );
-}
 
 interface TranscriptionListProps {
   onEmpty?: () => void;
+  folderId?: string | null;
+  tagIds?: string[];
 }
 
-export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
+export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionListProps) {
+  const {
+    fetchTranscriptions,
+    tags: allTags,
+    fetchTags,
+    folders: allFolders,
+    fetchFolders,
+    invalidateTranscriptions,
+    updateTranscriptionInCache,
+  } = useTranscriptionCache();
+  
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // Track if this is the initial load for this filter combination
+  const filterKeyRef = useRef<string>('');
 
-  const fetchTranscriptions = async () => {
+  const loadData = async (forceRefresh = false) => {
+    const currentKey = `${folderId ?? 'none'}:${tagIds?.join(',') ?? ''}`;
+    const isFilterChange = currentKey !== filterKeyRef.current;
+    filterKeyRef.current = currentKey;
+    
+    // If filter changed or force refresh, invalidate cache
+    if (isFilterChange || forceRefresh) {
+      if (forceRefresh) {
+        invalidateTranscriptions();
+      }
+      setIsLoading(true);
+    }
+    
     try {
-      const data = await api.getTranscriptions();
+      const data = await fetchTranscriptions(folderId, tagIds);
       setTranscriptions(data);
+      setError(null);
       if (data.length === 0 && onEmpty) {
         onEmpty();
       }
@@ -60,39 +60,137 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
   };
 
   useEffect(() => {
-    fetchTranscriptions();
+    loadData();
+    fetchTags();
+    fetchFolders();
+  }, [folderId, tagIds?.join(',')]);
 
+  useEffect(() => {
     // Poll for updates every 5 seconds if there are processing items
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const hasProcessing = transcriptions.some(
         (t) => t.status === 'processing' || t.status === 'structuring' || t.status === 'pending'
       );
       if (hasProcessing) {
-        fetchTranscriptions();
+        // Force refresh when polling for processing items
+        loadData(true);
       }
     }, 5000);
 
     return () => clearInterval(interval);
   }, [transcriptions.length]);
 
+  const handleCopyUrl = async (transcription: Transcription) => {
+    const url = `${window.location.origin}/transcription/${transcription.id}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedId(transcription.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleTogglePublic = async (transcription: Transcription) => {
+    // Optimistic update (both local state and cache)
+    const newIsPublic = !transcription.isPublic;
+    setTranscriptions(prev => prev.map(t => 
+      t.id === transcription.id ? { ...t, isPublic: newIsPublic } : t
+    ));
+    updateTranscriptionInCache(transcription.id, { isPublic: newIsPublic });
+    
+    try {
+      await api.updateTranscription(transcription.id, { isPublic: newIsPublic });
+    } catch (err) {
+      // Revert on error
+      setTranscriptions(prev => prev.map(t => 
+        t.id === transcription.id ? { ...t, isPublic: transcription.isPublic } : t
+      ));
+      updateTranscriptionInCache(transcription.id, { isPublic: transcription.isPublic });
+      console.error('Failed to update transcription:', err);
+    }
+  };
+
+  const handleToggleTag = async (transcription: Transcription, tagId: string) => {
+    const currentTagIds = transcription.tags?.map(t => t.id) || [];
+    const isAdding = !currentTagIds.includes(tagId);
+    const newTagIds = isAdding
+      ? [...currentTagIds, tagId]
+      : currentTagIds.filter(id => id !== tagId);
+    
+    // Get the tag object for optimistic update
+    const tagToToggle = allTags.find(t => t.id === tagId);
+    
+    // Calculate new tags for optimistic update
+    const currentTags = transcription.tags || [];
+    const newTags = isAdding && tagToToggle
+      ? [...currentTags, tagToToggle]
+      : currentTags.filter(tag => tag.id !== tagId);
+    
+    // Optimistic update (both local state and cache)
+    setTranscriptions(prev => prev.map(t => 
+      t.id === transcription.id ? { ...t, tags: newTags } : t
+    ));
+    updateTranscriptionInCache(transcription.id, { tags: newTags });
+    
+    try {
+      await api.updateTranscription(transcription.id, { tagIds: newTagIds });
+    } catch (err) {
+      // Revert on error
+      setTranscriptions(prev => prev.map(t => 
+        t.id === transcription.id ? { ...t, tags: transcription.tags } : t
+      ));
+      updateTranscriptionInCache(transcription.id, { tags: transcription.tags });
+      console.error('Failed to update tags:', err);
+    }
+  };
+
+  const handleMoveToFolder = async (transcription: Transcription, targetFolderId: string | null) => {
+    const newFolderId = typeof targetFolderId === 'string' ? targetFolderId : undefined;
+    
+    // Optimistic update (both local state and cache)
+    setTranscriptions(prev =>
+      prev.map(t =>
+        t.id === transcription.id ? { ...t, folderId: newFolderId } : t
+      )
+    );
+    updateTranscriptionInCache(transcription.id, { folderId: newFolderId });
+    
+    // Also invalidate cache since folder change affects list filtering
+    invalidateTranscriptions();
+
+    try {
+      await api.updateTranscription(transcription.id, { folderId: targetFolderId });
+    } catch (err) {
+      // Revert on error
+      const originalFolderId = typeof transcription.folderId === 'string'
+        ? transcription.folderId
+        : undefined;
+      setTranscriptions(prev =>
+        prev.map(t =>
+          t.id === transcription.id ? { ...t, folderId: originalFolderId } : t
+        )
+      );
+      updateTranscriptionInCache(transcription.id, { folderId: originalFolderId });
+      console.error('Failed to move to folder:', err);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[1, 2, 3].map((i) => (
-          <Card key={i} className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                </div>
-                <Skeleton className="h-5 w-16 rounded-full" />
+          <Card key={i} className="overflow-hidden py-6">
+            <CardHeader className="p-3 pb-2">
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Skeleton className="h-3 w-3 rounded-full" />
+                <Skeleton className="h-3 w-20" />
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="p-3 pt-0">
               <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
               </div>
             </CardContent>
           </Card>
@@ -106,7 +204,7 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
       <Card className="border-status-error/30 bg-status-error-soft">
         <CardContent className="pt-6">
           <div className="flex items-center gap-3 text-status-error">
-            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <AlertCircle className="h-5 w-5 shrink-0" />
             <p>{error}</p>
           </div>
         </CardContent>
@@ -137,68 +235,19 @@ export function TranscriptionList({ onEmpty }: TranscriptionListProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {transcriptions.map((transcription, index) => (
-        <Link 
-          key={transcription.id} 
-          to={`/transcription/${transcription.id}`}
-          className="block outline-none"
-          style={{ animationDelay: `${index * 50}ms` }}
-        >
-          <Card className="h-full card-hover-lift group animate-fade-in-up">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
-                    {transcription.title}
-                  </CardTitle>
-                  <CardDescription className="flex items-center gap-2 mt-1.5">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>{formatDate(transcription.createdAt)}</span>
-                    {transcription.audioDuration && (
-                      <>
-                        <span className="text-muted-foreground/50">·</span>
-                        <span>{formatDuration(transcription.audioDuration)}</span>
-                      </>
-                    )}
-                  </CardDescription>
-                </div>
-                <StatusBadge status={transcription.status as TranscriptionStatus} />
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {(transcription.status === 'processing' || transcription.status === 'structuring') && (
-                <div className="space-y-2">
-                  <Progress value={transcription.progress * 100} className="h-2" />
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-info animate-pulse-soft" />
-                    {transcription.status === 'processing' ? 'Transcribing' : 'Structuring'}... {Math.round(transcription.progress * 100)}%
-                  </p>
-                </div>
-              )}
-              {transcription.status === 'completed' && transcription.structuredText && (
-                <div className="flex items-start gap-2">
-                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                    {transcription.structuredText.slice(0, 150)}...
-                  </p>
-                </div>
-              )}
-              {transcription.status === 'error' && transcription.errorMessage && (
-                <div className="flex items-start gap-2 text-status-error">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm line-clamp-2">
-                    {transcription.errorMessage}
-                  </p>
-                </div>
-              )}
-              {transcription.status === 'pending' && (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
-                  Waiting to start...
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </Link>
+        <TranscriptionCard
+          key={transcription.id}
+          transcription={transcription}
+          allTags={allTags}
+          allFolders={allFolders}
+          currentFolderId={folderId}
+          copiedId={copiedId}
+          animationDelay={index * 50}
+          onCopyUrl={handleCopyUrl}
+          onTogglePublic={handleTogglePublic}
+          onToggleTag={handleToggleTag}
+          onMoveToFolder={handleMoveToFolder}
+        />
       ))}
     </div>
   );

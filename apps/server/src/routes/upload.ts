@@ -90,6 +90,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       pdfGeneratedAt: null,
       whisperModel: null, // Will be set during transcription
       detectedLanguage: null, // Will be set during structuring
+      isPublic: false, // Default to private
     });
 
     const response: UploadResponse = {

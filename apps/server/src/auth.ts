@@ -46,22 +46,25 @@ export const auth = betterAuth({
     },
   },
   
-  // Cookie configuration for iOS app
+  // Cookie configuration
   advanced: {
-    // Allow cross-origin requests from iOS app
-    crossSubDomainCookies: {
-      enabled: false, // Not needed for iOS native app
-    },
     // Cookie settings
     cookiePrefix: 'lecture',
     // Disable CSRF for API-only usage (iOS app sends cookies automatically)
     disableCSRFCheck: true,
+    // Use SameSite=None for cross-origin OAuth flow (frontend on different domain than API)
+    defaultCookieAttributes: {
+      sameSite: 'none',
+      secure: true,
+    },
   },
   
   // Trusted origins for the iOS app and web frontend
   trustedOrigins: [
     'http://localhost:3000',
     'http://localhost:5173',  // Vite dev server for web frontend
+    'https://lecture-transcription-api.fly.dev', // Production server
+    'https://lecture-web.pages.dev', // Cloudflare Pages production
     'lecture://', // iOS app custom scheme
   ],
   

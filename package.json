@@ -15,9 +15,14 @@
     "dev:web": "npm run dev --workspace=@lecture/web-frontend",
     "build:server": "npm run build --workspace=@lecture/server",
     "build:web": "npm run build --workspace=@lecture/web-frontend",
-    "deploy:server": "npm run deploy --workspace=@lecture/server"
+    "deploy:server": "fly deploy",
+    "deploy:web": "bun run --filter=@lecture/web-frontend deploy"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "typescript": "~5.9.2"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7"
   }
 }

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+
+# Build outputs (we rebuild in Docker)
+apps/*/dist
+packages/*/dist
+
+# Development files
+.git
+.gitignore
+*.md
+README*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage
+.nyc_output
+
+# iOS app (not needed for server)
+apps/ios
+
+# Web frontend (not needed for server)
+apps/web-frontend
+
+# Docker files
+.dockerignore

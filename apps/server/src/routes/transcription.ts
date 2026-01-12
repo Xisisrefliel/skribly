@@ -11,11 +11,17 @@ import type { TranscriptionListResponse, TranscriptionDetailResponse, Transcribe
 
 const router: RouterType = Router();
 
-// GET /api/transcriptions - List all transcriptions for the user
+// GET /api/transcriptions - List all transcriptions for the user (with optional folder and tag filters)
 router.get('/transcriptions', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;
-    const transcriptions = await d1Service.getTranscriptionsByUser(userId);
+    const folderId = req.query.folderId as string | undefined;
+    const tagIds = req.query.tagIds ? (Array.isArray(req.query.tagIds) ? req.query.tagIds as string[] : [req.query.tagIds as string]) : undefined;
+
+    // Convert folderId string to null if it's the string "null"
+    const folderIdValue = folderId === 'null' ? null : folderId;
+
+    const transcriptions = await d1Service.getTranscriptionsByUserWithTags(userId, folderIdValue, tagIds);
 
     const response: TranscriptionListResponse = { transcriptions };
     res.json(response);
@@ -362,17 +368,17 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
   }
 });
 
-// PATCH /api/transcription/:id - Update transcription metadata (title)
+// PATCH /api/transcription/:id - Update transcription metadata (title, isPublic, folderId, or tagIds)
 router.patch('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;
     const { id } = req.params;
-    const { title } = req.body as { title?: string };
-
-    if (!title || typeof title !== 'string' || title.trim().length === 0) {
-      res.status(400).json({ error: 'Bad Request', message: 'Title is required and must be a non-empty string' });
-      return;
-    }
+    const { title, isPublic, folderId, tagIds } = req.body as { 
+      title?: string; 
+      isPublic?: boolean; 
+      folderId?: string | null;
+      tagIds?: string[];
+    };
 
     // Verify the transcription exists and belongs to user
     const transcription = await d1Service.getTranscription(id, userId);
@@ -382,10 +388,56 @@ router.patch('/transcription/:id', async (req: Request, res: Response): Promise<
       return;
     }
 
-    // Update the title
-    await d1Service.updateTranscriptionTitle(id, userId, title.trim());
+    // Update title if provided
+    if (title !== undefined) {
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        res.status(400).json({ error: 'Bad Request', message: 'Title is required and must be a non-empty string' });
+        return;
+      }
+      await d1Service.updateTranscriptionTitle(id, userId, title.trim());
+    }
 
-    res.json({ success: true, message: 'Title updated successfully' });
+    // Update visibility if provided
+    if (isPublic !== undefined) {
+      if (typeof isPublic !== 'boolean') {
+        res.status(400).json({ error: 'Bad Request', message: 'isPublic must be a boolean' });
+        return;
+      }
+      await d1Service.updateTranscriptionVisibility(id, userId, isPublic);
+    }
+
+    // Update folder if provided
+    if (folderId !== undefined) {
+      if (folderId !== null) {
+        // Verify folder exists and belongs to user
+        const folders = await d1Service.getFoldersByUser(userId);
+        const folder = folders.find(f => f.id === folderId);
+        if (!folder) {
+          res.status(400).json({ error: 'Bad Request', message: 'Folder not found' });
+          return;
+        }
+      }
+      await d1Service.updateTranscriptionFolder(id, userId, folderId);
+    }
+
+    // Update tags if provided
+    if (tagIds !== undefined) {
+      if (!Array.isArray(tagIds)) {
+        res.status(400).json({ error: 'Bad Request', message: 'tagIds must be an array' });
+        return;
+      }
+      // Verify all tags exist and belong to user
+      const userTags = await d1Service.getTagsByUser(userId);
+      const userTagIds = new Set(userTags.map(t => t.id));
+      const invalidTagIds = tagIds.filter(tagId => !userTagIds.has(tagId));
+      if (invalidTagIds.length > 0) {
+        res.status(400).json({ error: 'Bad Request', message: `Invalid tag IDs: ${invalidTagIds.join(', ')}` });
+        return;
+      }
+      await d1Service.setTranscriptionTags(id, tagIds);
+    }
+
+    res.json({ success: true, message: 'Transcription updated successfully' });
   } catch (error) {
     console.error('Update transcription error:', error);
     res.status(500).json({ 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   CloudUpload, 
@@ -6,12 +7,16 @@ import {
   Layers, 
   Plus,
   Loader2,
-  Sparkles
+  Sparkles,
+  FolderOpen
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { TranscriptionList } from '@/components/TranscriptionList';
+import { FolderSidebar } from '@/components/FolderSidebar';
+import { TagFilter } from '@/components/TagFilter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Drawer } from '@/components/ui/drawer';
 
 const features = [
   {
@@ -46,6 +51,11 @@ const features = [
 
 export function HomePage() {
   const { isAuthenticated, isLoading, signIn } = useAuth();
+  
+  // All hooks must be called before any conditional returns
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -72,7 +82,7 @@ export function HomePage() {
             </div>
             
             {/* Hero Title - More vibrant gradient */}
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-br from-foreground via-foreground/90 to-primary/80 bg-clip-text text-transparent">
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-linear-to-br from-foreground via-foreground/90 to-primary/80 bg-clip-text text-transparent">
               Turn Lectures into <br className="hidden sm:block" />
               Study Materials
             </h1>
@@ -101,7 +111,7 @@ export function HomePage() {
         </div>
 
         {/* Features Section */}
-        <div className="py-16 px-4 bg-muted/30">
+        <div className="py-16 px-4">
           <div className="max-w-5xl mx-auto">
             <h2 className="text-2xl font-bold text-center mb-12">How it works</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -136,21 +146,85 @@ export function HomePage() {
     );
   }
 
+  const handleTagToggle = (tagId: string) => {
+    setSelectedTagIds(prev =>
+      prev.includes(tagId)
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId]
+    );
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">My Transcriptions</h1>
-          <p className="text-muted-foreground">Upload lectures and study smarter</p>
+    <div className="min-h-[calc(100vh-6rem)] p-4 xl:p-6 animate-fade-in-up">
+      <div className="flex gap-4 xl:gap-6 max-w-7xl mx-auto">
+        {/* Sidebar - Desktop (xl and up) */}
+        <div className="hidden xl:block shrink-0">
+          <FolderSidebar
+            selectedFolderId={selectedFolderId}
+            onFolderSelect={setSelectedFolderId}
+          />
         </div>
-        <Link to="/upload">
-          <Button className="neu-button-primary">
-            <Plus className="w-4 h-4 mr-2" />
-            New Upload
-          </Button>
-        </Link>
+
+        {/* Sidebar - Tablet/Mobile (slide-over drawer) */}
+        <Drawer
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          side="left"
+          title="Folders"
+        >
+          <div className="p-3">
+            <FolderSidebar
+              selectedFolderId={selectedFolderId}
+              onFolderSelect={(id) => {
+                setSelectedFolderId(id);
+                setSidebarOpen(false);
+              }}
+              compact
+            />
+          </div>
+        </Drawer>
+
+        {/* Main content */}
+        <div className="flex-1 flex flex-col gap-4 min-w-0">
+          {/* Header bar */}
+          <div className="neu-floating-card flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSidebarOpen(true)}
+                className="xl:hidden h-9 w-9 neu-button rounded-xl"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-base sm:text-lg font-semibold">My Transcriptions</h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">Upload lectures and study smarter</p>
+              </div>
+            </div>
+            <Link to="/upload">
+              <Button className="neu-button-primary h-9 sm:h-10">
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">New Upload</span>
+              </Button>
+            </Link>
+          </div>
+
+          {/* Tag filter bar */}
+          <TagFilter
+            selectedTagIds={selectedTagIds}
+            onTagToggle={handleTagToggle}
+          />
+
+          {/* Transcription list */}
+          <div className="flex-1">
+            <TranscriptionList
+              folderId={selectedFolderId}
+              tagIds={selectedTagIds.length > 0 ? selectedTagIds : undefined}
+            />
+          </div>
+        </div>
       </div>
-      <TranscriptionList />
     </div>
   );
 }

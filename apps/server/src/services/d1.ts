@@ -1,4 +1,4 @@
-import type { Transcription, TranscriptionStatus, Quiz, QuizQuestion, FlashcardDeck, Flashcard } from '@lecture/shared';
+import type { Transcription, TranscriptionStatus, Quiz, QuizQuestion, FlashcardDeck, Flashcard, Tag } from '@lecture/shared';
 
 const D1_ACCOUNT_ID = process.env.D1_ACCOUNT_ID!;
 const D1_DATABASE_ID = process.env.D1_DATABASE_ID!;
@@ -55,6 +55,8 @@ interface TranscriptionRow {
   pdf_generated_at: string | null;
   whisper_model: string | null;
   detected_language: string | null;
+  is_public: number; // SQLite uses INTEGER for boolean (0 or 1)
+  folder_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +77,8 @@ function rowToTranscription(row: TranscriptionRow): Transcription {
     pdfGeneratedAt: row.pdf_generated_at,
     whisperModel: row.whisper_model,
     detectedLanguage: row.detected_language,
+    isPublic: Boolean(row.is_public),
+    folderId: row.folder_id || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -252,6 +256,7 @@ export const d1Service = {
         pdf_generated_at TEXT,
         whisper_model TEXT,
         detected_language TEXT,
+        is_public INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )
@@ -267,6 +272,12 @@ export const d1Service = {
     try {
       await executeQuery(`ALTER TABLE transcriptions ADD COLUMN detected_language TEXT`);
       console.log('Added detected_language column to transcriptions table');
+    } catch {
+      // Column already exists
+    }
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN is_public INTEGER DEFAULT 0`);
+      console.log('Added is_public column to transcriptions table');
     } catch {
       // Column already exists
     }
@@ -349,6 +360,90 @@ export const d1Service = {
     } catch (e) {
       // Indexes may already exist
     }
+
+    // Quiz attempts table - stores user quiz results
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS quiz_attempts (
+        id TEXT PRIMARY KEY,
+        quiz_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        total_questions INTEGER NOT NULL,
+        answers TEXT NOT NULL,
+        completed_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create indexes for quiz attempts
+    try {
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts(quiz_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id)`);
+    } catch (e) {
+      // Indexes may already exist
+    }
+
+    // ============================================
+    // Folders and Tags tables
+    // ============================================
+
+    // Add folder_id column to transcriptions if it doesn't exist
+    try {
+      await executeQuery(`ALTER TABLE transcriptions ADD COLUMN folder_id TEXT`);
+      console.log('Added folder_id column to transcriptions table');
+    } catch {
+      // Column already exists
+    }
+
+    // Folders table - user-created folders for organizing transcriptions
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#0ea5e9',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Tags table - user-created tags for categorizing transcriptions
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#0ea5e9',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Transcription tags junction table - many-to-many relationship
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS transcription_tags (
+        transcription_id TEXT NOT NULL,
+        tag_id TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (transcription_id, tag_id),
+        FOREIGN KEY (transcription_id) REFERENCES transcriptions(id) ON DELETE CASCADE,
+        FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create indexes for folders and tags
+    try {
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders(user_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_transcription_tags_transcription_id ON transcription_tags(transcription_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_transcription_tags_tag_id ON transcription_tags(tag_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_transcriptions_folder_id ON transcriptions(folder_id)`);
+    } catch (e) {
+      // Indexes may already exist
+    }
   },
 
   /**
@@ -359,8 +454,8 @@ export const d1Service = {
       `INSERT INTO transcriptions (
         id, user_id, title, audio_url, audio_duration, 
         transcription_text, structured_text, status, progress, error_message,
-        pdf_key, pdf_generated_at, whisper_model, detected_language
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        pdf_key, pdf_generated_at, whisper_model, detected_language, is_public, folder_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.userId,
@@ -376,6 +471,8 @@ export const d1Service = {
         data.pdfGeneratedAt,
         data.whisperModel,
         data.detectedLanguage,
+        data.isPublic ? 1 : 0,
+        data.folderId || null,
       ]
     );
   },
@@ -388,7 +485,15 @@ export const d1Service = {
       `SELECT * FROM transcriptions WHERE user_id = ? ORDER BY created_at DESC`,
       [userId]
     );
-    return rows.map(rowToTranscription);
+    const transcriptions = rows.map(rowToTranscription);
+    
+    // Fetch tags for each transcription
+    for (const transcription of transcriptions) {
+      const tags = await this.getTagsByTranscription(transcription.id);
+      (transcription as Transcription & { tags: Array<{ id: string; userId: string; name: string; color: string; createdAt: string }> }).tags = tags;
+    }
+    
+    return transcriptions;
   },
 
   /**
@@ -398,6 +503,24 @@ export const d1Service = {
     const rows = await executeQuery<TranscriptionRow>(
       `SELECT * FROM transcriptions WHERE id = ? AND user_id = ?`,
       [id, userId]
+    );
+    if (rows.length === 0) return null;
+    
+    const transcription = rowToTranscription(rows[0]);
+    // Fetch tags for the transcription
+    const tags = await this.getTagsByTranscription(id);
+    (transcription as Transcription & { tags: Array<{ id: string; userId: string; name: string; color: string; createdAt: string }> }).tags = tags;
+    
+    return transcription;
+  },
+
+  /**
+   * Get a public transcription by ID (no user check)
+   */
+  async getPublicTranscription(id: string): Promise<Transcription | null> {
+    const rows = await executeQuery<TranscriptionRow>(
+      `SELECT * FROM transcriptions WHERE id = ? AND is_public = 1`,
+      [id]
     );
     return rows.length > 0 ? rowToTranscription(rows[0]) : null;
   },
@@ -588,6 +711,114 @@ export const d1Service = {
   },
 
   // ============================================
+  // Quiz attempt operations
+  // ============================================
+
+  /**
+   * Save a quiz attempt
+   */
+  async saveQuizAttempt(attempt: {
+    id: string;
+    quizId: string;
+    userId: string;
+    score: number;
+    totalQuestions: number;
+    answers: number[];
+  }): Promise<void> {
+    await executeQuery(
+      `INSERT INTO quiz_attempts (id, quiz_id, user_id, score, total_questions, answers, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        attempt.id,
+        attempt.quizId,
+        attempt.userId,
+        attempt.score,
+        attempt.totalQuestions,
+        JSON.stringify(attempt.answers),
+        new Date().toISOString(),
+      ]
+    );
+  },
+
+  /**
+   * Get quiz attempts for a quiz
+   */
+  async getQuizAttempts(quizId: string, userId: string): Promise<Array<{
+    id: string;
+    quizId: string;
+    userId: string;
+    score: number;
+    totalQuestions: number;
+    answers: number[];
+    completedAt: string;
+  }>> {
+    const rows = await executeQuery<{
+      id: string;
+      quiz_id: string;
+      user_id: string;
+      score: number;
+      total_questions: number;
+      answers: string;
+      completed_at: string;
+    }>(
+      `SELECT id, quiz_id, user_id, score, total_questions, answers, completed_at
+       FROM quiz_attempts
+       WHERE quiz_id = ? AND user_id = ?
+       ORDER BY completed_at DESC`,
+      [quizId, userId]
+    );
+
+    return rows.map(row => ({
+      id: row.id,
+      quizId: row.quiz_id,
+      userId: row.user_id,
+      score: row.score,
+      totalQuestions: row.total_questions,
+      answers: JSON.parse(row.answers),
+      completedAt: row.completed_at,
+    }));
+  },
+
+  /**
+   * Get all quiz attempts for a user (across all quizzes)
+   */
+  async getAllQuizAttemptsByUser(userId: string): Promise<Array<{
+    id: string;
+    quizId: string;
+    userId: string;
+    score: number;
+    totalQuestions: number;
+    answers: number[];
+    completedAt: string;
+  }>> {
+    const rows = await executeQuery<{
+      id: string;
+      quiz_id: string;
+      user_id: string;
+      score: number;
+      total_questions: number;
+      answers: string;
+      completed_at: string;
+    }>(
+      `SELECT id, quiz_id, user_id, score, total_questions, answers, completed_at
+       FROM quiz_attempts
+       WHERE user_id = ?
+       ORDER BY completed_at DESC`,
+      [userId]
+    );
+
+    return rows.map(row => ({
+      id: row.id,
+      quizId: row.quiz_id,
+      userId: row.user_id,
+      score: row.score,
+      totalQuestions: row.total_questions,
+      answers: JSON.parse(row.answers),
+      completedAt: row.completed_at,
+    }));
+  },
+
+  // ============================================
   // Flashcard operations
   // ============================================
 
@@ -689,5 +920,272 @@ export const d1Service = {
        WHERE id = ? AND user_id = ?`,
       [title, id, userId]
     );
+  },
+
+  /**
+   * Update transcription public/private status
+   */
+  async updateTranscriptionVisibility(id: string, userId: string, isPublic: boolean): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET is_public = ?, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ?`,
+      [isPublic ? 1 : 0, id, userId]
+    );
+  },
+
+  // ============================================
+  // Folder operations
+  // ============================================
+
+  /**
+   * Get all folders for a user
+   */
+  async getFoldersByUser(userId: string): Promise<Array<{ id: string; userId: string; name: string; color: string; createdAt: string }>> {
+    const rows = await executeQuery<{
+      id: string;
+      user_id: string;
+      name: string;
+      color: string;
+      created_at: string;
+    }>(
+      `SELECT id, user_id, name, color, created_at FROM folders WHERE user_id = ? ORDER BY name ASC`,
+      [userId]
+    );
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      color: row.color,
+      createdAt: row.created_at,
+    }));
+  },
+
+  /**
+   * Create a new folder
+   */
+  async createFolder(id: string, userId: string, name: string, color: string): Promise<void> {
+    await executeQuery(
+      `INSERT INTO folders (id, user_id, name, color, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [id, userId, name, color]
+    );
+  },
+
+  /**
+   * Update folder name or color
+   */
+  async updateFolder(id: string, userId: string, name?: string, color?: string): Promise<void> {
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      params.push(name);
+    }
+    if (color !== undefined) {
+      updates.push('color = ?');
+      params.push(color);
+    }
+
+    if (updates.length === 0) return;
+
+    updates.push("updated_at = datetime('now')");
+    params.push(id, userId);
+
+    await executeQuery(
+      `UPDATE folders SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+      params
+    );
+  },
+
+  /**
+   * Delete a folder
+   */
+  async deleteFolder(id: string, userId: string): Promise<void> {
+    // First, remove folder_id from all transcriptions in this folder
+    await executeQuery(
+      `UPDATE transcriptions SET folder_id = NULL WHERE folder_id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    // Then delete the folder
+    await executeQuery(
+      `DELETE FROM folders WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+  },
+
+  /**
+   * Update transcription folder
+   */
+  async updateTranscriptionFolder(id: string, userId: string, folderId: string | null): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET folder_id = ?, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ?`,
+      [folderId, id, userId]
+    );
+  },
+
+  // ============================================
+  // Tag operations
+  // ============================================
+
+  /**
+   * Get all tags for a user
+   */
+  async getTagsByUser(userId: string): Promise<Array<{ id: string; userId: string; name: string; color: string; createdAt: string }>> {
+    const rows = await executeQuery<{
+      id: string;
+      user_id: string;
+      name: string;
+      color: string;
+      created_at: string;
+    }>(
+      `SELECT id, user_id, name, color, created_at FROM tags WHERE user_id = ? ORDER BY name ASC`,
+      [userId]
+    );
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      color: row.color,
+      createdAt: row.created_at,
+    }));
+  },
+
+  /**
+   * Create a new tag
+   */
+  async createTag(id: string, userId: string, name: string, color: string): Promise<void> {
+    await executeQuery(
+      `INSERT INTO tags (id, user_id, name, color, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [id, userId, name, color]
+    );
+  },
+
+  /**
+   * Update tag name or color
+   */
+  async updateTag(id: string, userId: string, name?: string, color?: string): Promise<void> {
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      params.push(name);
+    }
+    if (color !== undefined) {
+      updates.push('color = ?');
+      params.push(color);
+    }
+
+    if (updates.length === 0) return;
+
+    updates.push("updated_at = datetime('now')");
+    params.push(id, userId);
+
+    await executeQuery(
+      `UPDATE tags SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+      params
+    );
+  },
+
+  /**
+   * Delete a tag
+   */
+  async deleteTag(id: string, userId: string): Promise<void> {
+    // Junction table entries will be cascade deleted
+    await executeQuery(
+      `DELETE FROM tags WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+  },
+
+  /**
+   * Get tags for a transcription
+   */
+  async getTagsByTranscription(transcriptionId: string): Promise<Tag[]> {
+    const rows = await executeQuery<{
+      id: string;
+      user_id: string;
+      name: string;
+      color: string;
+      created_at: string;
+    }>(
+      `SELECT t.id, t.user_id, t.name, t.color, t.created_at
+       FROM tags t
+       INNER JOIN transcription_tags tt ON t.id = tt.tag_id
+       WHERE tt.transcription_id = ?
+       ORDER BY t.name ASC`,
+      [transcriptionId]
+    );
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      color: row.color,
+      createdAt: row.created_at,
+    }));
+  },
+
+  /**
+   * Set tags for a transcription (replaces all existing tags)
+   */
+  async setTranscriptionTags(transcriptionId: string, tagIds: string[]): Promise<void> {
+    // Delete existing tags
+    await executeQuery(
+      `DELETE FROM transcription_tags WHERE transcription_id = ?`,
+      [transcriptionId]
+    );
+
+    // Insert new tags
+    for (const tagId of tagIds) {
+      await executeQuery(
+        `INSERT INTO transcription_tags (transcription_id, tag_id, created_at)
+         VALUES (?, ?, datetime('now'))`,
+        [transcriptionId, tagId]
+      );
+    }
+  },
+
+  /**
+   * Get transcriptions with their tags
+   */
+  async getTranscriptionsByUserWithTags(userId: string, folderId?: string | null, tagIds?: string[]): Promise<Transcription[]> {
+    let query = `SELECT t.* FROM transcriptions t WHERE t.user_id = ?`;
+    const params: unknown[] = [userId];
+
+    if (folderId !== undefined) {
+      if (folderId === null) {
+        query += ` AND t.folder_id IS NULL`;
+      } else {
+        query += ` AND t.folder_id = ?`;
+        params.push(folderId);
+      }
+    }
+
+    if (tagIds && tagIds.length > 0) {
+      query += ` AND t.id IN (
+        SELECT DISTINCT transcription_id 
+        FROM transcription_tags 
+        WHERE tag_id IN (${tagIds.map(() => '?').join(',')})
+      )`;
+      params.push(...tagIds);
+    }
+
+    query += ` ORDER BY t.created_at DESC`;
+
+    const rows = await executeQuery<TranscriptionRow>(query, params);
+    const transcriptions = rows.map(rowToTranscription);
+
+    // Fetch tags for each transcription
+    for (const transcription of transcriptions) {
+      const tags = await this.getTagsByTranscription(transcription.id);
+      (transcription as Transcription & { tags: Array<{ id: string; userId: string; name: string; color: string; createdAt: string }> }).tags = tags;
+    }
+
+    return transcriptions;
   },
 };

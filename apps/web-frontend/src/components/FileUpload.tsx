@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 import { api } from '@/lib/api';
 import { formatFileSize } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ interface FileUploadProps {
 
 export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const navigate = useNavigate();
+  const { invalidateTranscriptions } = useTranscriptionCache();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -104,6 +106,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       // Start transcription automatically
       await api.startTranscription(response.id);
       
+      // Invalidate cache so the new transcription shows up when navigating back
+      invalidateTranscriptions();
+      
       if (onUploadComplete) {
         onUploadComplete(response.id);
       } else {
@@ -117,7 +122,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   };
 
   return (
-    <Card className="w-full max-w-xl mx-auto animate-fade-in-up">
+    <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Upload className="h-5 w-5 text-primary" />

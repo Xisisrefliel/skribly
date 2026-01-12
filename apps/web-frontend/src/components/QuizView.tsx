@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Quiz } from '@lecture/shared';
 import { 
   Check, 
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 interface QuizViewProps {
   quiz: Quiz;
@@ -30,10 +31,39 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
   const [score, setScore] = useState(0);
   const [answers, setAnswers] = useState<(number | null)[]>(new Array(quiz.questions.length).fill(null));
   const [showCelebration, setShowCelebration] = useState(false);
+  const [isSavingAttempt, setIsSavingAttempt] = useState(false);
+  const attemptSavedRef = useRef(false);
 
   const currentQuestion = quiz.questions[currentIndex];
   const isLastQuestion = currentIndex === quiz.questions.length - 1;
   const progress = ((currentIndex + 1) / quiz.questions.length) * 100;
+
+  // Save quiz attempt when quiz is completed (currentIndex === -1)
+  useEffect(() => {
+    if (currentIndex === -1 && !attemptSavedRef.current) {
+      attemptSavedRef.current = true;
+      setIsSavingAttempt(true);
+      
+      // Convert answers to non-null array (defaulting to -1 for unanswered)
+      const finalAnswers = answers.map(a => a ?? -1);
+      
+      api.saveQuizAttempt({
+        quizId: quiz.id,
+        score,
+        totalQuestions: quiz.questions.length,
+        answers: finalAnswers,
+      })
+        .then(() => {
+          console.log('Quiz attempt saved successfully');
+        })
+        .catch((error) => {
+          console.error('Failed to save quiz attempt:', error);
+        })
+        .finally(() => {
+          setIsSavingAttempt(false);
+        });
+    }
+  }, [currentIndex, answers, quiz.id, quiz.questions.length, score]);
 
   const handleSelectAnswer = (index: number) => {
     if (showResult) return;
@@ -71,6 +101,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
     setShowResult(false);
     setScore(0);
     setAnswers(new Array(quiz.questions.length).fill(null));
+    attemptSavedRef.current = false;
   };
 
   // Final results view
@@ -94,7 +125,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
           <CardTitle className="text-2xl">Quiz Complete!</CardTitle>
           <CardDescription>Here's how you did</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 py-6">
           <div className="text-center space-y-2">
             <div className={cn(
               "text-6xl font-bold",
@@ -105,6 +136,12 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
             <p className="text-muted-foreground">
               You got <span className="font-semibold text-foreground">{score}</span> out of <span className="font-semibold text-foreground">{quiz.questions.length}</span> questions correct
             </p>
+            {isSavingAttempt && (
+              <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Saving result...
+              </p>
+            )}
           </div>
           
           <div className="flex justify-center gap-3">
@@ -254,7 +291,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
 
         {showResult && (
           <div className={cn(
-            "p-4 rounded-lg border animate-fade-in-up",
+            "p-4 py-6 rounded-lg border animate-fade-in-up",
             selectedAnswer === currentQuestion.correctAnswer 
               ? "bg-status-success-soft border-status-success/20" 
               : "bg-status-error-soft border-status-error/20"

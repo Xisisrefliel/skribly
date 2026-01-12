@@ -1,6 +1,6 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import { requireAuth } from './middleware/authMiddleware.js';
@@ -8,6 +8,9 @@ import { uploadRouter } from './routes/upload.js';
 import { transcriptionRouter } from './routes/transcription.js';
 import { studyRouter } from './routes/study.js';
 import { iosAuthRouter } from './routes/iosAuth.js';
+import { publicRouter } from './routes/public.js';
+import { foldersRouter } from './routes/folders.js';
+import { tagsRouter } from './routes/tags.js';
 import { d1Service } from './services/d1.js';
 
 const app = express();
@@ -15,13 +18,19 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-  origin: true, // Allow all origins for iOS app
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://lecture-web.pages.dev',
+    'https://lecture-transcription-api.fly.dev',
+  ],
   credentials: true, // Allow cookies
 }));
+app.use(cookieParser());
 app.use(express.json());
 
 // better-auth handler - handles all /api/auth/* routes
-// Must be before other middleware that parses the body
+// This includes: /api/auth/signin/google, /api/auth/callback/google, /api/auth/session, etc.
 const authHandler = toNodeHandler(auth);
 app.all('/api/auth/*', authHandler);
 app.all('/api/auth', authHandler);
@@ -29,6 +38,9 @@ app.all('/api/auth', authHandler);
 // iOS-specific auth route (validates iOS Google ID tokens)
 // Must be before requireAuth middleware
 app.use('/api', iosAuthRouter);
+
+// Public routes (no auth required)
+app.use('/api/public', publicRouter);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -51,6 +63,8 @@ app.use('/api', requireAuth);
 app.use('/api', uploadRouter);
 app.use('/api', transcriptionRouter);
 app.use('/api', studyRouter);
+app.use('/api', foldersRouter);
+app.use('/api', tagsRouter);
 
 // Error handling
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

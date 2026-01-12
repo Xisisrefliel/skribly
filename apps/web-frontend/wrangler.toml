@@ -1,0 +1,4 @@
+# Cloudflare Pages configuration for Lecture web frontend
+name = "lecture-web"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
