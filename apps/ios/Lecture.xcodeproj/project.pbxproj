@@ -18,6 +18,11 @@
 		E11111110000000000000008 /* TranscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000008 /* TranscriptionDetailView.swift */; };
 		E11111110000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000009 /* SettingsView.swift */; };
 		E11111110000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000010 /* Assets.xcassets */; };
+		E11111110000000000000011 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000012 /* OnboardingView.swift */; };
+		E11111110000000000000013 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000013 /* AuthService.swift */; };
+		E11111110000000000000014 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000014 /* SignInView.swift */; };
+		E11111110000000000000015 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E18000000000000000000001 /* GoogleSignIn */; };
+		E11111110000000000000016 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E18000000000000000000002 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +39,9 @@
 		E10000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E10000000000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E10000000000000000000012 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		E10000000000000000000013 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		E10000000000000000000014 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +49,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E11111110000000000000015 /* GoogleSignIn in Frameworks */,
+				E11111110000000000000016 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,6 +89,7 @@
 			children = (
 				E10000000000000000000001 /* LectureApp.swift */,
 				E10000000000000000000002 /* ContentView.swift */,
+				E13000000000000000000010 /* Auth */,
 				E13000000000000000000005 /* Models */,
 				E13000000000000000000006 /* Services */,
 				E13000000000000000000007 /* ViewModels */,
@@ -124,10 +135,20 @@
 			isa = PBXGroup;
 			children = (
 				E10000000000000000000007 /* HomeView.swift */,
-				E10000000000000000000008 /* TranscriptionDetailView.swift */,
+				E10000000000000000000012 /* OnboardingView.swift */,
 				E10000000000000000000009 /* SettingsView.swift */,
+				E10000000000000000000014 /* SignInView.swift */,
+				E10000000000000000000008 /* TranscriptionDetailView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		E13000000000000000000010 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				E10000000000000000000013 /* AuthService.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -146,6 +167,10 @@
 			dependencies = (
 			);
 			name = Lecture;
+			packageProductDependencies = (
+				E18000000000000000000001 /* GoogleSignIn */,
+				E18000000000000000000002 /* GoogleSignInSwift */,
+			);
 			productName = Lecture;
 			productReference = E10000000000000000000000 /* Lecture.app */;
 			productType = "com.apple.product-type.application";
@@ -174,6 +199,9 @@
 				Base,
 			);
 			mainGroup = E13000000000000000000001;
+			packageReferences = (
+				E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			productRefGroup = E13000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -209,6 +237,9 @@
 				E11111110000000000000007 /* HomeView.swift in Sources */,
 				E11111110000000000000008 /* TranscriptionDetailView.swift in Sources */,
 				E11111110000000000000009 /* SettingsView.swift in Sources */,
+				E11111110000000000000011 /* OnboardingView.swift in Sources */,
+				E11111110000000000000013 /* AuthManager.swift in Sources */,
+				E11111110000000000000014 /* SignInView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,6 +447,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E18000000000000000000001 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		E18000000000000000000002 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E15000000000000000000001 /* Project object */;
 }
