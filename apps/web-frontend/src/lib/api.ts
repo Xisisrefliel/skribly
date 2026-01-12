@@ -96,6 +96,16 @@ class ApiClient {
     });
   }
 
+  async updateTranscription(id: string, data: { title?: string }): Promise<void> {
+    await this.request(`/api/transcription/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+  }
+
   async generatePdf(id: string, type: 'structured' | 'raw' = 'structured'): Promise<{ pdfUrl: string }> {
     return this.request<{ pdfUrl: string }>(`/api/transcription/${id}/pdf`, {
       method: 'POST',

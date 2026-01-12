@@ -678,4 +678,16 @@ export const d1Service = {
       [transcriptionId]
     );
   },
+
+  /**
+   * Update transcription title
+   */
+  async updateTranscriptionTitle(id: string, userId: string, title: string): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions 
+       SET title = ?, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ?`,
+      [title, id, userId]
+    );
+  },
 };

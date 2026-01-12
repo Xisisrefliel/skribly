@@ -362,6 +362,39 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
   }
 });
 
+// PATCH /api/transcription/:id - Update transcription metadata (title)
+router.patch('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+    const { title } = req.body as { title?: string };
+
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      res.status(400).json({ error: 'Bad Request', message: 'Title is required and must be a non-empty string' });
+      return;
+    }
+
+    // Verify the transcription exists and belongs to user
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    // Update the title
+    await d1Service.updateTranscriptionTitle(id, userId, title.trim());
+
+    res.json({ success: true, message: 'Title updated successfully' });
+  } catch (error) {
+    console.error('Update transcription error:', error);
+    res.status(500).json({ 
+      error: 'Failed to update transcription', 
+      message: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
 // DELETE /api/transcription/:id - Delete a transcription
 router.delete('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
   try {

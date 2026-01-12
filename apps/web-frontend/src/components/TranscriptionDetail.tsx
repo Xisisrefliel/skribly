@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import type { Transcription, Quiz, FlashcardDeck } from '@lecture/shared';
 import { 
@@ -6,7 +6,6 @@ import {
   Trash2, 
   RefreshCw, 
   Download, 
-  BookOpen, 
   ClipboardCheck, 
   Layers,
   Loader2,
@@ -16,7 +15,7 @@ import {
   Eye,
   FileText
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -24,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { QuizView } from '@/components/QuizView';
 import { FlashcardView } from '@/components/FlashcardView';
 import { Markdown } from '@/components/Markdown';
+import { TableOfContents } from '@/components/TableOfContents';
 import { api } from '@/lib/api';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 
@@ -51,6 +51,74 @@ function StatusBadge({ status }: { status: TranscriptionStatus }) {
 
 type StudyMode = 'none' | 'quiz' | 'flashcards';
 
+interface EditableTitleProps {
+  value: string;
+  onChange: (newTitle: string) => void;
+  isLoading?: boolean;
+}
+
+function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== value) {
+      onChange(trimmed);
+    } else {
+      setEditValue(value);
+    }
+    setIsEditing(false);
+  }, [editValue, value, onChange]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setEditValue(value);
+      setIsEditing(false);
+    }
+  }, [handleSave, value]);
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="editable-title-input text-2xl font-bold"
+        disabled={isLoading}
+      />
+    );
+  }
+
+  return (
+    <h1 
+      className="editable-title text-2xl font-bold cursor-text"
+      onClick={() => setIsEditing(true)}
+      title="Click to edit title"
+    >
+      {value}
+      {isLoading && <Loader2 className="inline-block ml-2 h-4 w-4 animate-spin" />}
+    </h1>
+  );
+}
+
 export function TranscriptionDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -60,6 +128,7 @@ export function TranscriptionDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   
   // Study features
   const [studyMode, setStudyMode] = useState<StudyMode>('none');
@@ -99,6 +168,20 @@ export function TranscriptionDetail() {
 
     return () => clearInterval(interval);
   }, [id, transcription?.status]);
+
+  const handleTitleChange = useCallback(async (newTitle: string) => {
+    if (!id || !transcription) return;
+    
+    setIsSavingTitle(true);
+    try {
+      await api.updateTranscription(id, { title: newTitle });
+      setTranscription(prev => prev ? { ...prev, title: newTitle } : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update title');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  }, [id, transcription]);
 
   const handleDelete = async () => {
     if (!id || !confirm('Are you sure you want to delete this transcription?')) return;
@@ -265,19 +348,29 @@ export function TranscriptionDetail() {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-6 w-20 rounded-full" />
+      <div className="max-w-6xl mx-auto">
+        <div className="flex gap-6">
+          {/* TOC skeleton */}
+          <div className="hidden lg:block w-56 flex-shrink-0">
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+          {/* Content skeleton */}
+          <div className="flex-1 space-y-6">
+            <Skeleton className="h-10 w-3/4" />
+            <Skeleton className="h-4 w-48" />
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-20" />
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+            <Skeleton className="h-96 w-full rounded-xl" />
+          </div>
         </div>
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-32 w-full rounded-xl" />
-        <Skeleton className="h-96 w-full rounded-xl" />
       </div>
     );
   }
 
-  if (error || !transcription) {
+  if (error && !transcription) {
     return (
       <div className="max-w-4xl mx-auto">
         <Card className="border-status-error/30 bg-status-error-soft">
@@ -298,169 +391,190 @@ export function TranscriptionDetail() {
     );
   }
 
+  if (!transcription) {
+    return null;
+  }
+
   const isProcessing =
     transcription.status === 'processing' ||
     transcription.status === 'structuring' ||
     transcription.status === 'pending';
 
+  const isCompleted = transcription.status === 'completed';
+  const content = transcription.structuredText || transcription.transcriptionText || '';
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold">{transcription.title}</h1>
-            <StatusBadge status={transcription.status as TranscriptionStatus} />
+    <div className="max-w-6xl mx-auto animate-fade-in-up">
+      <div className="flex gap-8">
+        {/* Left sidebar - Table of Contents (hidden on mobile) */}
+        {isCompleted && content && (
+          <aside className="toc-sidebar hidden lg:block w-56 flex-shrink-0">
+            <TableOfContents content={content} />
+          </aside>
+        )}
+
+        {/* Main content area */}
+        <main className="flex-1 min-w-0 document-content">
+          {/* Editable Title */}
+          <div className="mb-2">
+            <EditableTitle 
+              value={transcription.title} 
+              onChange={handleTitleChange}
+              isLoading={isSavingTitle}
+            />
           </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
+
+          {/* Status badge (inline with title area when not completed) */}
+          {!isCompleted && (
+            <div className="mb-2">
+              <StatusBadge status={transcription.status as TranscriptionStatus} />
+            </div>
+          )}
+
+          {/* Property row (metadata) */}
+          <div className="property-row mb-4">
+            <div className="property-item">
               <Clock className="h-4 w-4" />
-              {formatDate(transcription.createdAt, 'long')}
-            </span>
+              <span>{formatDate(transcription.createdAt, 'long')}</span>
+            </div>
             {transcription.audioDuration && (
-              <span className="flex items-center gap-1.5">
+              <div className="property-item">
                 <FileText className="h-4 w-4" />
-                {formatDuration(transcription.audioDuration)}
-              </span>
+                <span>{formatDuration(transcription.audioDuration)}</span>
+              </div>
             )}
             {transcription.detectedLanguage && (
-              <span className="flex items-center gap-1.5">
+              <div className="property-item">
                 <Globe className="h-4 w-4" />
-                {transcription.detectedLanguage}
-              </span>
+                <span>{transcription.detectedLanguage}</span>
+              </div>
             )}
           </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link to="/">
-            <Button variant="outline" className="neu-button">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-          {transcription.status === 'error' && (
-            <Button onClick={handleRetry} variant="outline" className="neu-button">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          )}
-          <Button
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="neu-button-destructive"
-          >
-            {isDeleting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4 mr-2" />
+
+          {/* Action bar */}
+          <div className="flex flex-wrap gap-2 py-4 border-b border-border mb-6">
+            <Link to="/">
+              <Button variant="outline" className="neu-button">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+            </Link>
+
+            {isCompleted && (
+              <>
+                <Button
+                  onClick={handleGenerateQuiz}
+                  disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
+                  className="neu-button-info"
+                >
+                  {isLoadingQuiz || isGeneratingQuiz ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {isLoadingQuiz ? 'Loading...' : 'Generating...'}
+                    </>
+                  ) : (
+                    <>
+                      <ClipboardCheck className="h-4 w-4 mr-2" />
+                      {quiz ? 'Continue Quiz' : 'Take Quiz'}
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleGenerateFlashcards}
+                  disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
+                  className="neu-button-purple"
+                >
+                  {isLoadingFlashcards || isGeneratingFlashcards ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {isLoadingFlashcards ? 'Loading...' : 'Generating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="h-4 w-4 mr-2" />
+                      {flashcards ? 'Continue Flashcards' : 'Study Flashcards'}
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="neu-button"
+                >
+                  {isGeneratingPdf ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                </Button>
+              </>
             )}
-            {isDeleting ? 'Deleting...' : 'Delete'}
-          </Button>
-        </div>
-      </div>
 
-      {/* Study Tools - Only show when completed */}
-      {transcription.status === 'completed' && (
-        <Card className="border-status-info/30 bg-gradient-to-br from-status-info-soft to-status-purple-soft overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-status-info/20 flex items-center justify-center">
-                <BookOpen className="w-4 h-4 text-status-info" />
-              </div>
-              Study Tools
-            </CardTitle>
-            <CardDescription>
-              Use AI to create study materials from this lecture
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleGenerateQuiz}
-                disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
-                className="neu-button-info"
-              >
-                {isLoadingQuiz || isGeneratingQuiz ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isLoadingQuiz ? 'Loading...' : 'Generating...'}
-                  </>
-                ) : (
-                  <>
-                    <ClipboardCheck className="h-4 w-4 mr-2" />
-                    {quiz ? 'Continue Quiz' : 'Take Quiz'}
-                  </>
-                )}
+            {transcription.status === 'error' && (
+              <Button onClick={handleRetry} variant="outline" className="neu-button">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
               </Button>
-              <Button
-                onClick={handleGenerateFlashcards}
-                disabled={isLoadingQuiz || isGeneratingQuiz || isLoadingFlashcards || isGeneratingFlashcards}
-                className="neu-button-purple"
-              >
-                {isLoadingFlashcards || isGeneratingFlashcards ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isLoadingFlashcards ? 'Loading...' : 'Generating...'}
-                  </>
-                ) : (
-                  <>
-                    <Layers className="h-4 w-4 mr-2" />
-                    {flashcards ? 'Continue Flashcards' : 'Study Flashcards'}
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            )}
 
-      {/* Progress */}
-      {isProcessing && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-status-info animate-pulse-soft" />
-                  {transcription.status === 'pending' && 'Waiting to start...'}
-                  {transcription.status === 'processing' && 'Transcribing audio...'}
-                  {transcription.status === 'structuring' && 'Structuring notes...'}
-                </span>
-                <span className="font-medium">{Math.round(transcription.progress * 100)}%</span>
-              </div>
-              <Progress value={transcription.progress * 100} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            <Button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="neu-button-destructive"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
 
-      {/* Error */}
-      {error && (
-        <Card className="border-status-error/30 bg-status-error-soft">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3 text-status-error">
-              <AlertCircle className="h-5 w-5" />
-              <p>{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          {/* Error message */}
+          {error && (
+            <Card className="border-status-error/30 bg-status-error-soft mb-6">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 text-status-error">
+                  <AlertCircle className="h-5 w-5" />
+                  <p>{error}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Content */}
-      {transcription.status === 'completed' && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-muted-foreground" />
-                  Transcription
-                </CardTitle>
-                <CardDescription>
+          {/* Progress (when processing) */}
+          {isProcessing && (
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-status-info animate-pulse-soft" />
+                      {transcription.status === 'pending' && 'Waiting to start...'}
+                      {transcription.status === 'processing' && 'Transcribing audio...'}
+                      {transcription.status === 'structuring' && 'Structuring notes...'}
+                    </span>
+                    <span className="font-medium">{Math.round(transcription.progress * 100)}%</span>
+                  </div>
+                  <Progress value={transcription.progress * 100} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Content */}
+          {isCompleted && (
+            <div className="document-content">
+              {/* View toggle */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-muted-foreground">
                   {transcription.whisperModel && `Model: ${transcription.whisperModel}`}
-                </CardDescription>
-              </div>
-              <div className="flex gap-2">
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -470,37 +584,23 @@ export function TranscriptionDetail() {
                   <Eye className="h-4 w-4 mr-2" />
                   {showRaw ? 'Show Structured' : 'Show Raw'}
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={handleDownloadPdf}
-                  disabled={isGeneratingPdf}
-                  className="neu-button-primary"
-                >
-                  {isGeneratingPdf ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" />
-                  )}
-                  {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
-                </Button>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="max-w-none">
+
+              {/* Markdown content */}
               {showRaw ? (
                 <pre className="whitespace-pre-wrap text-sm bg-muted/50 p-4 rounded-lg overflow-x-auto border">
                   {transcription.transcriptionText || 'No raw transcription available'}
                 </pre>
               ) : (
                 <Markdown 
-                  content={transcription.structuredText || transcription.transcriptionText || ''} 
+                  content={content} 
+                  collapsible
                 />
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </main>
+      </div>
     </div>
   );
 }
