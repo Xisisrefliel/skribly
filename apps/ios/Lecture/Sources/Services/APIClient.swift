@@ -7,6 +7,7 @@ enum APIError: Error, LocalizedError {
     case serverError(String)
     case networkError(Error)
     case uploadFailed(String)
+    case unauthorized
     
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ enum APIError: Error, LocalizedError {
             return "Network error: \(error.localizedDescription)"
         case .uploadFailed(let message):
             return "Upload failed: \(message)"
+        case .unauthorized:
+            return "Authentication required"
         }
     }
 }
@@ -34,7 +37,7 @@ class APIClient {
     // - For real device: use your Mac's IP like "http://192.168.1.100:3000"
     // - For production: use your deployed server URL
     #if DEBUG
-    private let baseURL = "http://localhost:3000"
+        private let baseURL = "http://192.168.178.19:3000"
     #else
     private let baseURL = "https://your-server.fly.dev"
     #endif
@@ -42,14 +45,15 @@ class APIClient {
     private let session: URLSession
     private let decoder: JSONDecoder
     
-    private var deviceId: String {
-        KeychainService.shared.deviceId
-    }
-    
     private init() {
+        // Configure session to handle cookies automatically
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 120
         config.timeoutIntervalForResource = 300
+        // Enable cookie handling for session-based auth
+        config.httpCookieAcceptPolicy = .always
+        config.httpShouldSetCookies = true
+        config.httpCookieStorage = .shared
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
@@ -58,8 +62,8 @@ class APIClient {
     
     func fetchTranscriptions() async throws -> [Transcription] {
         let url = try buildURL(path: "/api/transcriptions")
-        var request = URLRequest(url: url)
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
+        let request = URLRequest(url: url)
+        // No need to add auth header - cookies are sent automatically
         
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
@@ -70,8 +74,7 @@ class APIClient {
     
     func fetchTranscription(id: String) async throws -> Transcription {
         let url = try buildURL(path: "/api/transcription/\(id)")
-        var request = URLRequest(url: url)
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
+        let request = URLRequest(url: url)
         
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
@@ -112,7 +115,7 @@ class APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
+        // Cookies are sent automatically
         request.addValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
         // Use uploadTask for progress tracking
@@ -126,7 +129,6 @@ class APIClient {
         let url = try buildURL(path: "/api/transcribe/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
         
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
@@ -138,7 +140,6 @@ class APIClient {
         let url = try buildURL(path: "/api/transcription/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
         
         let (_, response) = try await session.data(for: request)
         try validateResponse(response)
@@ -157,7 +158,6 @@ class APIClient {
         let url = try buildURL(path: "/api/transcription/\(id)/pdf")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.addValue(deviceId, forHTTPHeaderField: "x-device-id")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body = ["type": type]
@@ -299,6 +299,10 @@ class APIClient {
             throw APIError.serverError("Invalid response")
         }
         
+        if httpResponse.statusCode == 401 {
+            throw APIError.unauthorized
+        }
+        
         guard (200...299).contains(httpResponse.statusCode) else {
             throw APIError.serverError("Server returned status \(httpResponse.statusCode)")
         }
@@ -332,7 +336,12 @@ class APIClient {
                 continuation.resume(with: result)
             }
             
-            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            // Create session with cookie support for uploads
+            let config = URLSessionConfiguration.default
+            config.httpCookieAcceptPolicy = .always
+            config.httpShouldSetCookies = true
+            config.httpCookieStorage = .shared
+            let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
             let task = session.uploadTask(with: request, from: data)
             delegate.task = task
             task.resume()

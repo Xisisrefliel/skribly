@@ -9,9 +9,12 @@
   "scripts": {
     "mobile": "npm run --workspace=@lecture/mobile",
     "server": "npm run --workspace=@lecture/server",
+    "web": "npm run --workspace=@lecture/web-frontend",
     "dev:mobile": "npm run start --workspace=@lecture/mobile",
     "dev:server": "npm run dev --workspace=@lecture/server",
+    "dev:web": "npm run dev --workspace=@lecture/web-frontend",
     "build:server": "npm run build --workspace=@lecture/server",
+    "build:web": "npm run build --workspace=@lecture/web-frontend",
     "deploy:server": "npm run deploy --workspace=@lecture/server"
   },
   "devDependencies": {

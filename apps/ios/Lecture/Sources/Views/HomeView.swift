@@ -4,9 +4,9 @@ import UniformTypeIdentifiers
 struct HomeView: View {
     @EnvironmentObject var store: TranscriptionStore
     @State private var showFilePicker = false
-    @State private var showTitlePrompt = false
+    @State private var showUploadConfirmation = false
     @State private var selectedFileURL: URL?
-    @State private var transcriptionTitle = ""
+    @State private var selectedFileName = ""
     @State private var showError = false
     @State private var showDeleteConfirmation = false
     @State private var showExportOptions = false
@@ -90,8 +90,7 @@ struct HomeView: View {
             ) { result in
                 handleFileSelection(result)
             }
-            .alert("Name Your Lecture", isPresented: $showTitlePrompt) {
-                TextField("Lecture Title", text: $transcriptionTitle)
+            .alert("Upload Lecture", isPresented: $showUploadConfirmation) {
                 Button("Cancel", role: .cancel) {
                     cleanupFileSelection()
                 }
@@ -99,7 +98,7 @@ struct HomeView: View {
                     uploadSelectedFile()
                 }
             } message: {
-                Text("Enter a title for this lecture recording")
+                Text(selectedFileName)
             }
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {
@@ -319,8 +318,8 @@ struct HomeView: View {
             }
             
             selectedFileURL = url
-            transcriptionTitle = url.deletingPathExtension().lastPathComponent
-            showTitlePrompt = true
+            selectedFileName = url.deletingPathExtension().lastPathComponent
+            showUploadConfirmation = true
             
         case .failure(let error):
             store.error = error.localizedDescription
@@ -332,12 +331,12 @@ struct HomeView: View {
             url.stopAccessingSecurityScopedResource()
         }
         selectedFileURL = nil
-        transcriptionTitle = ""
+        selectedFileName = ""
     }
     
     private func uploadSelectedFile() {
         guard let fileURL = selectedFileURL else { return }
-        let title = transcriptionTitle.isEmpty ? "Untitled Lecture" : transcriptionTitle
+        let title = selectedFileName.isEmpty ? "Untitled Lecture" : selectedFileName
         
         Task {
             do {
@@ -350,7 +349,7 @@ struct HomeView: View {
             // Cleanup after upload completes (success or failure)
             fileURL.stopAccessingSecurityScopedResource()
             selectedFileURL = nil
-            transcriptionTitle = ""
+            selectedFileName = ""
         }
     }
 }

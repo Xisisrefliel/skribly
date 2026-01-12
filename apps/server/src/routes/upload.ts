@@ -56,7 +56,7 @@ const upload = multer({
 // POST /api/upload - Upload an audio or video file
 router.post('/upload', upload.single('audio'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const deviceId = req.deviceId!;
+    const userId = req.userId!;
     const file = req.file;
     const title = (req.body.title as string) || 'Untitled Lecture';
 
@@ -69,7 +69,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     const id = uuidv4();
     const fileExtension = file.originalname.split('.').pop() || 'mp3';
     const isVideo = file.mimetype.startsWith('video/');
-    const r2Key = `${isVideo ? 'video' : 'audio'}/${deviceId}/${id}/original.${fileExtension}`;
+    const r2Key = `${isVideo ? 'video' : 'audio'}/${userId}/${id}/original.${fileExtension}`;
 
     // Upload to R2
     await r2Service.uploadFile(r2Key, file.buffer, file.mimetype);
@@ -77,7 +77,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     // Create transcription record in D1
     await d1Service.createTranscription({
       id,
-      deviceId,
+      userId,
       title,
       audioUrl: r2Key,
       audioDuration: null, // Will be set during processing
@@ -88,6 +88,8 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       errorMessage: null,
       pdfKey: null,
       pdfGeneratedAt: null,
+      whisperModel: null, // Will be set during transcription
+      detectedLanguage: null, // Will be set during structuring
     });
 
     const response: UploadResponse = {

@@ -174,6 +174,31 @@ struct TranscriptionDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                
+                // Debug info: show model and language
+                if currentTranscription.whisperModel != nil || currentTranscription.detectedLanguage != nil {
+                    HStack(spacing: 8) {
+                        if let model = currentTranscription.whisperModel {
+                            Text(model)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundStyle(.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        if let language = currentTranscription.detectedLanguage {
+                            Text(language)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.1))
+                                .foregroundStyle(.purple)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
             
             Spacer()
@@ -839,7 +864,7 @@ struct ShareSheet: UIViewControllerRepresentable {
     NavigationStack {
         TranscriptionDetailView(transcription: Transcription(
             id: "1",
-            deviceId: "test",
+            userId: "test-user",
             title: "Sample Lecture",
             audioUrl: nil,
             audioDuration: 3600,
@@ -889,6 +914,8 @@ struct ShareSheet: UIViewControllerRepresentable {
             errorMessage: nil,
             pdfKey: "pdfs/1/structured-sample.pdf",
             pdfGeneratedAt: ISO8601DateFormatter().string(from: Date()),
+            whisperModel: "whisper-large-v3",
+            detectedLanguage: "English",
             createdAt: ISO8601DateFormatter().string(from: Date()),
             updatedAt: ISO8601DateFormatter().string(from: Date())
         ))
