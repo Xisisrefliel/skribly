@@ -9,7 +9,7 @@ export type TranscriptionStatus =
 // Main transcription type
 export interface Transcription {
   id: string;
-  deviceId: string;
+  userId: string;
   title: string;
   audioUrl: string | null;
   audioDuration: number | null;  // Duration in seconds
@@ -20,8 +20,59 @@ export interface Transcription {
   errorMessage: string | null;
   pdfKey: string | null;         // R2 storage key for pre-generated PDF
   pdfGeneratedAt: string | null; // ISO date string when PDF was generated
+  whisperModel: string | null;   // Model used for transcription (e.g., 'whisper-large-v3')
+  detectedLanguage: string | null; // Language detected in the transcription
   createdAt: string;             // ISO date string
   updatedAt: string;             // ISO date string
+}
+
+// Quiz types
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswer: number; // Index of correct option
+  explanation: string;
+}
+
+export interface Quiz {
+  id: string;
+  transcriptionId: string;
+  title: string;
+  questions: QuizQuestion[];
+  createdAt: string;
+}
+
+export interface GenerateQuizRequest {
+  questionCount?: number; // Default 10
+}
+
+export interface GenerateQuizResponse {
+  quiz: Quiz;
+}
+
+// Flashcard types
+export interface Flashcard {
+  id: string;
+  front: string;  // Question or concept
+  back: string;   // Answer or explanation
+  category?: string;
+}
+
+export interface FlashcardDeck {
+  id: string;
+  transcriptionId: string;
+  title: string;
+  cards: Flashcard[];
+  createdAt: string;
+}
+
+export interface GenerateFlashcardsRequest {
+  cardCount?: number; // Default 20
+}
+
+export interface GenerateFlashcardsResponse {
+  deck: FlashcardDeck;
 }
 
 // API request/response types

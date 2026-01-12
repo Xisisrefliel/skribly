@@ -1,17 +1,34 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { toNodeHandler } from 'better-auth/node';
+import { auth } from './auth.js';
+import { requireAuth } from './middleware/authMiddleware.js';
 import { uploadRouter } from './routes/upload.js';
 import { transcriptionRouter } from './routes/transcription.js';
-import { deviceAuth } from './middleware/deviceAuth.js';
+import { studyRouter } from './routes/study.js';
+import { iosAuthRouter } from './routes/iosAuth.js';
 import { d1Service } from './services/d1.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true, // Allow all origins for iOS app
+  credentials: true, // Allow cookies
+}));
 app.use(express.json());
+
+// better-auth handler - handles all /api/auth/* routes
+// Must be before other middleware that parses the body
+const authHandler = toNodeHandler(auth);
+app.all('/api/auth/*', authHandler);
+app.all('/api/auth', authHandler);
+
+// iOS-specific auth route (validates iOS Google ID tokens)
+// Must be before requireAuth middleware
+app.use('/api', iosAuthRouter);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -29,10 +46,11 @@ app.post('/init-db', async (_req, res) => {
   }
 });
 
-// API routes (protected by device auth)
-app.use('/api', deviceAuth);
+// API routes (protected by auth middleware)
+app.use('/api', requireAuth);
 app.use('/api', uploadRouter);
 app.use('/api', transcriptionRouter);
+app.use('/api', studyRouter);
 
 // Error handling
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -53,6 +71,7 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Auth endpoints available at /api/auth/*`);
   });
 }
 

@@ -10,7 +10,7 @@ enum TranscriptionStatus: String, Codable {
 
 struct Transcription: Codable, Identifiable {
     let id: String
-    let deviceId: String
+    let userId: String
     let title: String
     let audioUrl: String?
     let audioDuration: Double?
@@ -21,6 +21,8 @@ struct Transcription: Codable, Identifiable {
     let errorMessage: String?
     let pdfKey: String?
     let pdfGeneratedAt: String?
+    let whisperModel: String?
+    let detectedLanguage: String?
     let createdAt: String
     let updatedAt: String
     
