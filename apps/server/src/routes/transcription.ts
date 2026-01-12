@@ -1,20 +1,21 @@
 import { Router, Request, Response } from 'express';
 import type { Router as RouterType } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { d1Service } from '../services/d1.js';
 import { r2Service } from '../services/r2.js';
-import { groqService } from '../services/groq.js';
+import { transcriptionService } from '../services/transcription.js';
 import { llmService } from '../services/llm.js';
 import { pdfService } from '../services/pdf.js';
 import { processAudioFile, cleanupTempDir } from '../services/audio.js';
-import type { TranscriptionListResponse, TranscriptionDetailResponse, TranscribeResponse } from '@lecture/shared';
+import type { TranscriptionListResponse, TranscriptionDetailResponse, TranscribeResponse, Quiz, FlashcardDeck } from '@lecture/shared';
 
 const router: RouterType = Router();
 
-// GET /api/transcriptions - List all transcriptions for the device
+// GET /api/transcriptions - List all transcriptions for the user
 router.get('/transcriptions', async (req: Request, res: Response): Promise<void> => {
   try {
-    const deviceId = req.deviceId!;
-    const transcriptions = await d1Service.getTranscriptionsByDevice(deviceId);
+    const userId = req.userId!;
+    const transcriptions = await d1Service.getTranscriptionsByUser(userId);
 
     const response: TranscriptionListResponse = { transcriptions };
     res.json(response);
@@ -30,10 +31,10 @@ router.get('/transcriptions', async (req: Request, res: Response): Promise<void>
 // GET /api/transcription/:id - Get a single transcription
 router.get('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const deviceId = req.deviceId!;
+    const userId = req.userId!;
     const { id } = req.params;
 
-    const transcription = await d1Service.getTranscription(id, deviceId);
+    const transcription = await d1Service.getTranscription(id, userId);
 
     if (!transcription) {
       res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
@@ -54,12 +55,12 @@ router.get('/transcription/:id', async (req: Request, res: Response): Promise<vo
 // POST /api/transcribe/:id - Start transcription process
 router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  const deviceId = req.deviceId!;
+  const userId = req.userId!;
   let tempDir: string | null = null;
 
   try {
     // Get the transcription record
-    const transcription = await d1Service.getTranscription(id, deviceId);
+    const transcription = await d1Service.getTranscription(id, userId);
 
     if (!transcription) {
       res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
@@ -91,7 +92,7 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
     } as TranscribeResponse);
 
     // Process in background (don't await)
-    processTranscription(id, deviceId, transcription.audioUrl!).catch(err => {
+    processTranscription(id, userId, transcription.audioUrl!).catch(err => {
       console.error(`Background transcription error for ${id}:`, err);
     });
 
@@ -104,59 +105,144 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
   }
 });
 
+/**
+ * Generate quiz and flashcards for a transcription in background (in parallel)
+ */
+async function generateStudyMaterials(transcriptionId: string, content: string, title: string): Promise<void> {
+  console.log(`Starting study materials generation for ${transcriptionId} (parallel)`);
+
+  // Generate quiz and flashcards in parallel
+  const quizPromise = (async () => {
+    try {
+      console.log(`Generating quiz for ${transcriptionId}`);
+      const questions = await llmService.generateQuiz(content, title, 10);
+      
+      const quiz: Quiz = {
+        id: uuidv4(),
+        transcriptionId,
+        title: `Quiz: ${title}`,
+        questions,
+        createdAt: new Date().toISOString(),
+      };
+
+      await d1Service.saveQuiz(quiz);
+      console.log(`Quiz saved for ${transcriptionId}: ${quiz.id} with ${questions.length} questions`);
+    } catch (quizError) {
+      console.error(`Quiz generation failed for ${transcriptionId}:`, quizError);
+    }
+  })();
+
+  const flashcardsPromise = (async () => {
+    try {
+      console.log(`Generating flashcards for ${transcriptionId}`);
+      const cards = await llmService.generateFlashcards(content, title, 20);
+      
+      const deck: FlashcardDeck = {
+        id: uuidv4(),
+        transcriptionId,
+        title: `Flashcards: ${title}`,
+        cards,
+        createdAt: new Date().toISOString(),
+      };
+
+      await d1Service.saveFlashcardDeck(deck);
+      console.log(`Flashcard deck saved for ${transcriptionId}: ${deck.id} with ${cards.length} cards`);
+    } catch (flashcardError) {
+      console.error(`Flashcard generation failed for ${transcriptionId}:`, flashcardError);
+    }
+  })();
+
+  // Wait for both to complete
+  await Promise.all([quizPromise, flashcardsPromise]);
+}
+
 // Background transcription processing
-async function processTranscription(id: string, deviceId: string, audioUrl: string): Promise<void> {
+async function processTranscription(id: string, userId: string, audioUrl: string): Promise<void> {
   let tempDir: string | null = null;
 
   try {
     // Get the transcription for the title
-    const transcriptionRecord = await d1Service.getTranscription(id, deviceId);
+    const transcriptionRecord = await d1Service.getTranscription(id, userId);
     const title = transcriptionRecord?.title || 'Untitled Lecture';
 
     console.log(`Starting transcription for ${id}: "${title}"`);
 
+    // Progress breakdown:
+    // 0-5%: Download audio
+    // 5-15%: Process/convert audio
+    // 15-85%: Transcribe chunks
+    // 85-95%: Structuring with LLM
+    // 95-100%: PDF generation + completion
+
     // Download audio from R2
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.02);
     const audioBuffer = await r2Service.getFile(audioUrl);
     const filename = audioUrl.split('/').pop() || 'audio.mp3';
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.05);
 
     // Process audio (convert and split)
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.1);
     const { chunks, totalDuration, tempDir: processedTempDir } = await processAudioFile(audioBuffer, filename);
     tempDir = processedTempDir;
 
     console.log(`Audio processed: ${totalDuration}s, ${chunks.length} chunks`);
+    console.log(`Chunk details:`, chunks.map(c => ({ 
+      index: c.index, 
+      duration: `${Math.round(c.endTime - c.startTime)}s`,
+      path: c.filePath 
+    })));
     await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
 
-    // Transcribe each chunk (0.15 - 0.80 progress)
+    // Transcribe each chunk (0.15 - 0.85 progress)
     const transcriptionParts: string[] = [];
-    const progressPerChunk = 0.65 / chunks.length;
+    const transcriptionProgressRange = 0.70; // 15% to 85%
+    const progressPerChunk = transcriptionProgressRange / chunks.length;
+    let transcriptionModel: string | undefined;
+    let transcriptionProvider: string | undefined;
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      console.log(`Transcribing chunk ${i + 1}/${chunks.length}`);
+      const chunkDuration = chunk.endTime - chunk.startTime;
+      console.log(`Transcribing chunk ${i + 1}/${chunks.length}: ${chunk.filePath}, duration: ${Math.round(chunkDuration)}s`);
 
-      const result = await groqService.transcribeFile(chunk.filePath);
+      // Update progress at start of each chunk
+      const chunkStartProgress = 0.15 + i * progressPerChunk;
+      await d1Service.updateTranscriptionStatus(id, 'processing', chunkStartProgress);
+
+      const result = await transcriptionService.transcribeFile(chunk.filePath);
       transcriptionParts.push(result.text);
+      
+      // Capture the model and provider from the first chunk
+      if (i === 0) {
+        transcriptionModel = result.model;
+        transcriptionProvider = result.provider;
+      }
 
-      const progress = 0.15 + (i + 1) * progressPerChunk;
-      await d1Service.updateTranscriptionStatus(id, 'processing', Math.min(progress, 0.80));
+      // Update progress at end of each chunk
+      const chunkEndProgress = 0.15 + (i + 1) * progressPerChunk;
+      await d1Service.updateTranscriptionStatus(id, 'processing', Math.min(chunkEndProgress, 0.85));
     }
 
     // Merge transcription parts
     const fullTranscription = transcriptionParts.join('\n\n');
-    console.log(`Transcription complete for ${id}, length: ${fullTranscription.length} chars`);
+    // Include provider in model name for debugging (e.g., "openai/gpt-4o-mini-transcribe")
+    const whisperModel = transcriptionProvider ? `${transcriptionProvider}/${transcriptionModel}` : transcriptionModel;
+    console.log(`Transcription complete for ${id}, length: ${fullTranscription.length} chars, model: ${whisperModel}`);
 
-    // Save raw transcription and update status to structuring
-    await d1Service.updateTranscriptionText(id, fullTranscription, totalDuration);
+    // Save raw transcription and update status to structuring (85% -> 90%)
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0.87);
+    await d1Service.updateTranscriptionText(id, fullTranscription, totalDuration, whisperModel);
     console.log(`Starting LLM structuring for ${id}`);
 
-    // Structure the transcription with LLM (0.90 - 1.0 progress)
+    // Structure the transcription with LLM (90% - 95% progress)
+    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.90);
     try {
-      const { structuredText } = await llmService.structureTranscription(fullTranscription, title);
+      const { structuredText, detectedLanguage } = await llmService.structureTranscription(fullTranscription, title);
       
-      // Save structured text and mark as completed
-      await d1Service.updateStructuredText(id, structuredText);
-      console.log(`Structuring completed for ${id}`);
+      await d1Service.updateTranscriptionStatus(id, 'structuring', 0.95);
+      
+      // Save structured text, detected language, and mark as completed
+      await d1Service.updateStructuredText(id, structuredText, detectedLanguage);
+      console.log(`Structuring completed for ${id}, language: ${detectedLanguage}`);
 
       // Generate PDF in background after structuring completes
       if (structuredText) {
@@ -169,6 +255,9 @@ async function processTranscription(id: string, deviceId: string, audioUrl: stri
           // PDF generation failure should not fail the transcription
           console.error(`Background PDF generation failed for ${id}:`, pdfError);
         }
+
+        // Generate quiz and flashcards in background
+        await generateStudyMaterials(id, structuredText, title);
       }
     } catch (llmError) {
       // If LLM fails, still mark as completed but without structured text
@@ -196,7 +285,7 @@ async function processTranscription(id: string, deviceId: string, audioUrl: stri
 // POST /api/transcription/:id/pdf - Generate PDF for transcription
 router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
   try {
-    const deviceId = req.deviceId!;
+    const userId = req.userId!;
     const { id } = req.params;
     const { type = 'structured', regenerate = false } = req.body as { 
       type?: 'structured' | 'raw';
@@ -204,7 +293,7 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
     };
 
     // Get the transcription
-    const transcription = await d1Service.getTranscription(id, deviceId);
+    const transcription = await d1Service.getTranscription(id, userId);
 
     if (!transcription) {
       res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
@@ -276,11 +365,11 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
 // DELETE /api/transcription/:id - Delete a transcription
 router.delete('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const deviceId = req.deviceId!;
+    const userId = req.userId!;
     const { id } = req.params;
 
     // Get the transcription to find the audio URL and PDF key
-    const transcription = await d1Service.getTranscription(id, deviceId);
+    const transcription = await d1Service.getTranscription(id, userId);
 
     if (!transcription) {
       res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
@@ -306,7 +395,7 @@ router.delete('/transcription/:id', async (req: Request, res: Response): Promise
     }
 
     // Delete from D1
-    await d1Service.deleteTranscription(id, deviceId);
+    await d1Service.deleteTranscription(id, userId);
 
     res.status(200).json({ message: 'Transcription deleted successfully' });
   } catch (error) {
