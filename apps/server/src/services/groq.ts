@@ -4,6 +4,9 @@ import path from 'path';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!;
 
+// Whisper model to use for transcription
+const WHISPER_MODEL = 'whisper-large-v3';
+
 const groq = new Groq({
   apiKey: GROQ_API_KEY,
   timeout: 120000, // 2 minute timeout for large files
@@ -56,6 +59,7 @@ async function withRetry<T>(
 export interface TranscriptionResult {
   text: string;
   duration: number;
+  model: string;  // The Whisper model used for transcription
   segments?: Array<{
     start: number;
     end: number;
@@ -84,7 +88,7 @@ export const groqService = {
       
       const transcription = await groq.audio.transcriptions.create({
         file: fileStream,
-        model: 'whisper-large-v3-turbo',
+        model: WHISPER_MODEL,
         response_format: 'verbose_json',
         language: language,
         temperature: 0,
@@ -100,6 +104,7 @@ export const groqService = {
       return {
         text: transcription.text,
         duration,
+        model: WHISPER_MODEL,
         segments: transcription.segments?.map(seg => ({
           start: seg.start,
           end: seg.end,
@@ -135,7 +140,7 @@ export const groqService = {
 
       const transcription = await groq.audio.transcriptions.create({
         file: file,
-        model: 'whisper-large-v3-turbo',
+        model: WHISPER_MODEL,
         response_format: 'verbose_json',
         language: language,
         temperature: 0,
@@ -150,6 +155,7 @@ export const groqService = {
       return {
         text: transcription.text,
         duration,
+        model: WHISPER_MODEL,
         segments: transcription.segments?.map(seg => ({
           start: seg.start,
           end: seg.end,

@@ -5,6 +5,7 @@ import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
 // 5 minutes per chunk with MP3 compression = ~5MB per chunk (well under 25MB limit)
+// Also stays well under OpenAI's 1400s limit for gpt-4o-transcribe
 const CHUNK_DURATION_MINUTES = parseInt(process.env.CHUNK_DURATION_MINUTES || '5', 10);
 const CHUNK_DURATION_SECONDS = CHUNK_DURATION_MINUTES * 60;
 
