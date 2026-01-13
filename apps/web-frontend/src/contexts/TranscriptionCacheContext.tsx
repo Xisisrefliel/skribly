@@ -19,11 +19,13 @@ interface TranscriptionCacheContextType {
   tags: Tag[];
   isLoadingTags: boolean;
   fetchTags: () => Promise<Tag[]>;
+  refreshTags: () => Promise<Tag[]>;
   
   // Folders
   folders: Folder[];
   isLoadingFolders: boolean;
   fetchFolders: () => Promise<Folder[]>;
+  refreshFolders: () => Promise<Folder[]>;
   
   // Cache management
   invalidateCache: () => void;
@@ -111,6 +113,24 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     }
   }, [tags, tagsLoaded]);
 
+  const refreshTags = useCallback(async (): Promise<Tag[]> => {
+    // Force refresh by resetting the loaded flag
+    setTagsLoaded(false);
+    setIsLoadingTags(true);
+    
+    try {
+      const data = await api.getTags();
+      setTags(data);
+      setTagsLoaded(true);
+      return data;
+    } catch (err) {
+      console.error('Failed to refresh tags:', err);
+      return [];
+    } finally {
+      setIsLoadingTags(false);
+    }
+  }, []);
+
   const fetchFolders = useCallback(async (): Promise<Folder[]> => {
     // Return cached folders if already loaded
     if (foldersLoaded && folders.length >= 0) {
@@ -131,6 +151,24 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
       setIsLoadingFolders(false);
     }
   }, [folders, foldersLoaded]);
+
+  const refreshFolders = useCallback(async (): Promise<Folder[]> => {
+    // Force refresh by resetting the loaded flag
+    setFoldersLoaded(false);
+    setIsLoadingFolders(true);
+    
+    try {
+      const data = await api.getFolders();
+      setFolders(data);
+      setFoldersLoaded(true);
+      return data;
+    } catch (err) {
+      console.error('Failed to refresh folders:', err);
+      return [];
+    } finally {
+      setIsLoadingFolders(false);
+    }
+  }, []);
 
   const invalidateCache = useCallback(() => {
     setTranscriptions(null);
@@ -167,9 +205,11 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
         tags,
         isLoadingTags,
         fetchTags,
+        refreshTags,
         folders,
         isLoadingFolders,
         fetchFolders,
+        refreshFolders,
         invalidateCache,
         invalidateTranscriptions,
         updateTranscriptionInCache,

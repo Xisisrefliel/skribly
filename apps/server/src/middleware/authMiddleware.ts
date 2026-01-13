@@ -1,7 +1,7 @@
 /**
  * Authentication middleware using Clerk Express SDK
  */
-import { clerkMiddleware, getAuth } from '@clerk/express';
+import { clerkMiddleware, getAuth, clerkClient } from '@clerk/express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { d1Service } from '../services/d1.js';
 
@@ -60,14 +60,34 @@ async function attachUserInfo(req: Request, _res: Response, next: NextFunction):
   }
   
   if (auth?.userId) {
-    const name = (auth.sessionClaims as any)?.name || '';
-    const email = (auth.sessionClaims as any)?.email || '';
-    const image = (auth.sessionClaims as any)?.image_url;
+    let name = '';
+    let email = '';
+    let image: string | undefined;
     
     try {
+      // Use clerkClient to get full user data reliably
+      const user = await clerkClient.users.getUser(auth.userId);
+      name = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.firstName || user.lastName || '';
+      email = user.emailAddresses?.[0]?.emailAddress || '';
+      image = user.imageUrl;
+      
+      // Ensure user exists in our database
       await d1Service.ensureUser(auth.userId, name, email, image);
     } catch (error) {
-      console.error('Failed to ensure user exists:', error);
+      console.error('Failed to get user data or ensure user exists:', error);
+      // Fall back to session claims if clerkClient fails
+      name = (auth.sessionClaims as any)?.name || (auth.sessionClaims as any)?.fullName || '';
+      email = (auth.sessionClaims as any)?.email || (auth.sessionClaims as any)?.primaryEmail || '';
+      image = (auth.sessionClaims as any)?.image_url;
+      
+      // Still try to ensure user even with fallback data
+      try {
+        await d1Service.ensureUser(auth.userId, name, email, image);
+      } catch (ensureError) {
+        console.error('Failed to ensure user with fallback data:', ensureError);
+      }
     }
     
     req.userId = auth.userId;

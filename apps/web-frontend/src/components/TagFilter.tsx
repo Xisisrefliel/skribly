@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 
 interface TagFilterProps {
   selectedTagIds: string[];
@@ -23,42 +24,31 @@ const PRESET_COLORS = [
 ];
 
 export function TagFilter({ selectedTagIds, onTagToggle }: TagFilterProps) {
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { tags, isLoadingTags, fetchTags, refreshTags } = useTranscriptionCache();
   const [isCreating, setIsCreating] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(PRESET_COLORS[0]);
 
-  const fetchTags = async () => {
-    try {
-      const data = await api.getTags();
-      setTags(data);
-    } catch (error) {
-      console.error('Failed to fetch tags:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchTags();
-  }, []);
+  }, [fetchTags]);
 
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
 
     try {
-      const tag = await api.createTag(newTagName.trim(), newTagColor);
-      setTags([...tags, tag]);
+      await api.createTag(newTagName.trim(), newTagColor);
       setNewTagName('');
       setNewTagColor(PRESET_COLORS[0]);
       setIsCreating(false);
+      // Refresh tags from context cache
+      await refreshTags();
     } catch (error) {
       console.error('Failed to create tag:', error);
     }
   };
 
-  if (isLoading) {
+  if (isLoadingTags) {
     return (
       <div className="flex items-center gap-2 px-4 py-2">
         <div className="text-sm text-muted-foreground">Loading tags...</div>

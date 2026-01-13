@@ -155,7 +155,7 @@ export function HomePage() {
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-              {mainFeatures.map((feature, index) => (
+              {mainFeatures.map((feature) => (
                 <Card 
                   key={feature.title} 
                   className="neu-floating-card border-none hover:translate-y-[-4px] transition-all duration-300 rounded-[2rem] overflow-hidden group/card"

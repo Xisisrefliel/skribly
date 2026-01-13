@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 
 interface FolderSidebarProps {
   selectedFolderId: string | null;
@@ -25,8 +26,7 @@ const PRESET_COLORS = [
 ];
 
 export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = false }: FolderSidebarProps) {
-  const [folders, setFolders] = useState<FolderType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { folders, isLoadingFolders, fetchFolders, refreshFolders } = useTranscriptionCache();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -34,30 +34,20 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
   const [editFolderName, setEditFolderName] = useState('');
   const [editFolderColor, setEditFolderColor] = useState(PRESET_COLORS[0]);
 
-  const fetchFolders = async () => {
-    try {
-      const data = await api.getFolders();
-      setFolders(data);
-    } catch (error) {
-      console.error('Failed to fetch folders:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchFolders();
-  }, []);
+  }, [fetchFolders]);
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
 
     try {
-      const folder = await api.createFolder(newFolderName.trim(), newFolderColor);
-      setFolders([...folders, folder]);
+      await api.createFolder(newFolderName.trim(), newFolderColor);
       setNewFolderName('');
       setNewFolderColor(PRESET_COLORS[0]);
       setIsCreating(false);
+      // Refresh folders from context cache
+      await refreshFolders();
     } catch (error) {
       console.error('Failed to create folder:', error);
     }
@@ -67,13 +57,14 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
     if (!editFolderName.trim()) return;
 
     try {
-      const updatedFolder = await api.updateFolder(id, {
+      await api.updateFolder(id, {
         name: editFolderName.trim(),
         color: editFolderColor,
       });
-      setFolders(folders.map(f => f.id === id ? updatedFolder : f));
       setEditingId(null);
       setEditFolderName('');
+      // Refresh folders from context cache
+      await refreshFolders();
     } catch (error) {
       console.error('Failed to update folder:', error);
     }
@@ -86,10 +77,11 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
 
     try {
       await api.deleteFolder(id);
-      setFolders(folders.filter(f => f.id !== id));
       if (selectedFolderId === id) {
         onFolderSelect(null);
       }
+      // Refresh folders from context cache
+      await refreshFolders();
     } catch (error) {
       console.error('Failed to delete folder:', error);
     }
@@ -155,7 +147,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
           All Transcriptions
         </button>
 
-        {isLoading ? (
+        {isLoadingFolders ? (
           <div className="text-sm text-muted-foreground px-3 py-2">Loading...</div>
         ) : folders.length === 0 && !isCreating ? (
           <div className="text-xs text-muted-foreground px-3 py-2 italic">
