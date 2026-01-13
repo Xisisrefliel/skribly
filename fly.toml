@@ -10,7 +10,6 @@ primary_region = 'ams'
   dockerfile = "apps/server/Dockerfile"
 
 [env]
-  BETTER_AUTH_URL = 'https://lecture-transcription-api.fly.dev'
   CHUNK_DURATION_MINUTES = '30'
   NODE_ENV = 'production'
   PORT = '3000'

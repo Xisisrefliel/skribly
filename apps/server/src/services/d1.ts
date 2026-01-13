@@ -92,6 +92,23 @@ function rowToTranscription(row: TranscriptionRow): Transcription {
 
 export const d1Service = {
   /**
+   * Ensure a user exists in the database (upsert)
+   * This is called when Clerk authenticates a user to ensure they have a row in the user table
+   */
+  async ensureUser(userId: string, name: string, email: string, image?: string): Promise<void> {
+    await executeQuery(
+      `INSERT INTO user (id, name, email, image, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         email = excluded.email,
+         image = excluded.image,
+         updated_at = datetime('now')`,
+      [userId, name, email, image || null]
+    );
+  },
+
+  /**
    * Initialize the database schema
    */
   async initSchema(): Promise<void> {

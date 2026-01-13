@@ -1,16 +1,9 @@
 import { Link, Outlet } from 'react-router-dom';
-import { Sun, Moon, Mic, Upload, LogOut, User } from 'lucide-react';
+import { Sun, Moon, Mic, Upload } from 'lucide-react';
+import { UserButton, SignInButton } from '@clerk/clerk-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -34,7 +27,7 @@ function ThemeToggle() {
 }
 
 export function Layout() {
-  const { user, isAuthenticated, signIn, signOut } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -77,56 +70,21 @@ export function Layout() {
                     <Upload className="h-4 w-4" />
                   </Button>
                 </Link>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      className="relative h-8 w-8 rounded-full neu-avatar"
-                      aria-label="User menu"
-                    >
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={user?.image} alt={user?.name || 'User avatar'} />
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-primary font-medium">
-                          {user?.name?.charAt(0).toUpperCase() || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 neu-dropdown">
-                    <div className="flex items-center gap-3 p-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={user?.image} alt="" />
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-primary">
-                          {user?.name?.charAt(0).toUpperCase() || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex flex-col space-y-0.5 leading-none overflow-hidden">
-                        <p className="font-medium truncate">{user?.name}</p>
-                        <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
-                      </div>
-                    </div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link to="/" className="flex items-center cursor-pointer">
-                        <User className="h-4 w-4 mr-2" />
-                        My Transcriptions
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={signOut} 
-                      className="cursor-pointer text-destructive focus:text-destructive"
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <UserButton 
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      avatarBox: "h-8 w-8"
+                    }
+                  }}
+                />
               </>
             ) : (
-              <Button onClick={signIn} size="sm" className="neu-button-primary">
-                Sign in
-              </Button>
+              <SignInButton mode="modal">
+                <Button size="sm" className="neu-button-primary">
+                  Sign in
+                </Button>
+              </SignInButton>
             )}
           </div>
         </nav>

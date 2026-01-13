@@ -1,5 +1,5 @@
-import { signIn, signOut, useSession, setSessionToken, clearSessionToken } from '@/lib/auth-client';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useUser, useAuth as useClerkAuth } from '@clerk/clerk-react';
+import { createContext, useContext, type ReactNode } from 'react';
 
 interface User {
   id: string;
@@ -12,61 +12,41 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signIn: () => Promise<void>;
+  signIn: () => void;
   signOut: () => Promise<void>;
-  refetch: () => void;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session, isPending, refetch } = useSession();
-  const [isProcessingCallback, setIsProcessingCallback] = useState(false);
-  const user = session?.user as User | null;
+  const { user: clerkUser, isLoaded, isSignedIn } = useUser();
+  const { signOut: clerkSignOut, getToken } = useClerkAuth();
 
-  // Handle OAuth callback - extract token from URL
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
+  const user: User | null = clerkUser ? {
+    id: clerkUser.id,
+    name: clerkUser.fullName || clerkUser.firstName || '',
+    email: clerkUser.primaryEmailAddress?.emailAddress || '',
+    image: clerkUser.imageUrl,
+  } : null;
 
-    if (token) {
-      setIsProcessingCallback(true);
-      // Store the token
-      setSessionToken(token);
-      
-      // Clean up URL
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
-      
-      // Refetch session with the new token
-      setTimeout(() => {
-        refetch();
-        setIsProcessingCallback(false);
-      }, 100);
-    }
-  }, [refetch]);
-
-  const handleSignIn = async () => {
-    await signIn.social({
-      provider: 'google',
-      callbackURL: window.location.origin,
-    });
+  const handleSignIn = () => {
+    window.location.href = '/sign-in';
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    clearSessionToken();
+    await clerkSignOut();
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading: isPending || isProcessingCallback,
-        isAuthenticated: !!user,
+        isLoading: !isLoaded,
+        isAuthenticated: !!isSignedIn,
         signIn: handleSignIn,
         signOut: handleSignOut,
-        refetch,
+        getToken,
       }}
     >
       {children}
