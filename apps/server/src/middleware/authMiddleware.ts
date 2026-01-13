@@ -38,6 +38,8 @@ export const clerkAuthMiddleware: RequestHandler = clerkMiddleware({
     'http://localhost:5173',           // Local dev frontend (Vite)
     'http://localhost:3000',           // Alternative local dev
     'https://lecture-web.pages.dev',   // Production frontend on Cloudflare Pages
+    'https://notism.one',              // Custom domain
+    'https://www.notism.one',          // Custom domain with www
   ],
 });
 

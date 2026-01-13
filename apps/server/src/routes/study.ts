@@ -121,11 +121,17 @@ router.get('/transcription/:id/flashcards', async (req: Request, res: Response):
       return;
     }
 
-    // Try to get stored flashcard deck
-    const deck = await d1Service.getFlashcardDeckByTranscriptionId(id);
+    // Get all stored flashcard decks
+    const decks = await d1Service.getAllFlashcardDecks(id);
 
-    if (deck) {
-      const response: GenerateFlashcardsResponse = { deck };
+    if (decks.length > 0) {
+      // If client asked for a specific deck format (backward compatibility)
+      // For now, we'll return the first (latest) deck in the standard response format 
+      // but also include all decks in a new property
+      const response = {
+        deck: decks[0], // Latest deck
+        decks: decks    // All decks
+      };
       res.json(response);
       return;
     }
@@ -168,8 +174,8 @@ router.post('/transcription/:id/flashcards', async (req: Request, res: Response)
       return;
     }
 
-    // Delete existing flashcard deck for this transcription
-    await d1Service.deleteFlashcardDeckByTranscriptionId(id);
+    // NOTE: We no longer delete existing decks to allow multiple versions
+    // await d1Service.deleteFlashcardDeckByTranscriptionId(id);
 
     // Generate new flashcards with language support
     const language = transcription.detectedLanguage || 'English';

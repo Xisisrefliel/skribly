@@ -45,6 +45,7 @@ const upload = multer({
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
       'application/vnd.ms-powerpoint', // .ppt (legacy)
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
     ];
     
     if (allowedMimes.includes(file.mimetype) || 
@@ -88,6 +89,12 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     ) {
       sourceType = 'pptx';
       baseFolder = 'documents';
+    } else if (
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      fileExtension === 'docx'
+    ) {
+      sourceType = 'docx';
+      baseFolder = 'documents';
     } else if (mimeType === 'application/vnd.ms-powerpoint' || fileExtension === 'ppt') {
       sourceType = 'ppt';
       baseFolder = 'documents';
@@ -118,6 +125,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       errorMessage: null,
       pdfKey: null,
       pdfGeneratedAt: null,
+      
       whisperModel: null, // Will be set during transcription
       detectedLanguage: null, // Will be set during structuring
       isPublic: false, // Default to private
@@ -143,6 +151,84 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     console.error('Upload error:', error);
     res.status(500).json({ 
       error: 'Upload failed', 
+      message: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// POST /api/upload-batch - Upload multiple documents to be processed together
+router.post('/upload-batch', upload.array('files', 10), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const files = req.files as Express.Multer.File[];
+    const title = (req.body.title as string) || 'Batch Document Study';
+
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: 'Bad Request', message: 'No documents provided' });
+      return;
+    }
+
+    // Generate unique ID for this composite transcription
+    const id = uuidv4();
+    
+    const uploadedFiles: Array<{ key: string, originalName: string, sourceType: SourceType }> = [];
+
+    for (const file of files) {
+      const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || 'bin';
+      const mimeType = file.mimetype;
+      
+      let sourceType: SourceType;
+      if (mimeType === 'application/pdf' || fileExtension === 'pdf') sourceType = 'pdf';
+      else if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || fileExtension === 'pptx') sourceType = 'pptx';
+      else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileExtension === 'docx') sourceType = 'docx';
+      else if (mimeType === 'application/vnd.ms-powerpoint' || fileExtension === 'ppt') sourceType = 'ppt';
+      else {
+        sourceType = 'pdf'; // Default fallback
+      }
+
+      const fileId = uuidv4();
+      const r2Key = `documents/${userId}/${id}/${fileId}.${fileExtension}`;
+      
+      // Upload to R2
+      await r2Service.uploadFile(r2Key, file.buffer, file.mimetype);
+      uploadedFiles.push({ key: r2Key, originalName: file.originalname, sourceType });
+    }
+
+    // Store the JSON of files in the audioUrl field
+    const r2KeysJson = JSON.stringify(uploadedFiles);
+
+    // Create transcription record in D1
+    await d1Service.createTranscription({
+      id,
+      userId,
+      title,
+      audioUrl: r2KeysJson,
+      audioDuration: null,
+      transcriptionText: null,
+      structuredText: null,
+      status: 'pending',
+      progress: 0,
+      errorMessage: null,
+      pdfKey: null,
+      pdfGeneratedAt: null,
+      whisperModel: 'batch-processing', 
+      detectedLanguage: null,
+      isPublic: false,
+      sourceType: 'pdf', // We'll treat batch as pdf/document type
+      mimeType: 'application/json', // Indicates multiple files
+      originalFileName: uploadedFiles.map(f => f.originalName).join(', '),
+    });
+
+    const response: UploadResponse = {
+      id,
+      message: `${files.length} documents uploaded successfully. Ready for batch processing.`,
+    };
+
+    res.status(201).json(response);
+  } catch (error) {
+    console.error('Batch upload error:', error);
+    res.status(500).json({ 
+      error: 'Batch upload failed', 
       message: error instanceof Error ? error.message : 'Unknown error' 
     });
   }

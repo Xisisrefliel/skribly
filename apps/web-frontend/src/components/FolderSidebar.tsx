@@ -80,7 +80,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
   };
 
   const handleDeleteFolder = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this folder? Lectures in this folder will not be deleted.')) {
+    if (!confirm('Are you sure you want to delete this folder? Transcriptions in this folder will not be deleted.')) {
       return;
     }
 
@@ -131,7 +131,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
         {/* Add folder button for compact mode */}
         {compact && (
           <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-xs font-medium text-muted-foreground">Organize your lectures</span>
+            <span className="text-xs font-medium text-muted-foreground">Organize your content</span>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -152,7 +152,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
           )}
         >
           <FolderIcon className="h-4 w-4" />
-          All Lectures
+          All Transcriptions
         </button>
 
         {isLoading ? (
@@ -165,7 +165,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
           folders.map((folder) => (
             <div key={folder.id} className="group relative">
               {editingId === folder.id ? (
-                <div className="space-y-2 p-2.5 bg-muted/50 rounded-xl border border-border/50">
+                <div className="space-y-2 p-2.5 bg-muted/40 rounded-xl border border-border/50">
                   <Input
                     value={editFolderName}
                     onChange={(e) => setEditFolderName(e.target.value)}
@@ -186,10 +186,10 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
                         key={color}
                         onClick={() => setEditFolderColor(color)}
                         className={cn(
-                          "h-5 w-5 rounded-full border-2 transition-all",
+                          "h-5 w-5 rounded-full border-2 transition-all duration-200",
                           editFolderColor === color
                             ? "border-foreground scale-110 shadow-md"
-                            : "border-transparent hover:scale-105"
+                            : "border-transparent hover:scale-110"
                         )}
                         style={{ backgroundColor: color }}
                       />
@@ -258,7 +258,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
         )}
 
         {isCreating && (
-          <div className="space-y-2 p-2.5 bg-muted/50 rounded-xl border border-border/50 animate-scale-in">
+          <div className="space-y-2 p-2.5 bg-muted/40 rounded-xl border border-border/50 animate-scale-in">
             <Input
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
@@ -280,10 +280,10 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
                   key={color}
                   onClick={() => setNewFolderColor(color)}
                   className={cn(
-                    "h-5 w-5 rounded-full border-2 transition-all",
+                    "h-5 w-5 rounded-full border-2 transition-all duration-200",
                     newFolderColor === color
                       ? "border-foreground scale-110 shadow-md"
-                      : "border-transparent hover:scale-105"
+                      : "border-transparent hover:scale-110"
                   )}
                   style={{ backgroundColor: color }}
                 />

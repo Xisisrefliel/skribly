@@ -108,7 +108,7 @@ function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
-        className="editable-title-input text-2xl font-bold"
+        className="editable-title-input text-3xl font-bold tracking-tight bg-background border-2 border-primary/50 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
         disabled={isLoading}
       />
     );
@@ -116,12 +116,12 @@ function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
 
   return (
     <h1 
-      className="editable-title text-2xl font-bold cursor-text"
+      className="editable-title text-3xl font-bold tracking-tight cursor-text hover:text-primary/80 transition-colors bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent"
       onClick={() => setIsEditing(true)}
       title="Click to edit title"
     >
       {value}
-      {isLoading && <Loader2 className="inline-block ml-2 h-4 w-4 animate-spin" />}
+      {isLoading && <Loader2 className="inline-block ml-2 h-5 w-5 animate-spin text-primary" />}
     </h1>
   );
 }
@@ -134,7 +134,7 @@ export function TranscriptionDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  
   const [showRaw, setShowRaw] = useState(false);
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   
@@ -142,6 +142,7 @@ export function TranscriptionDetail() {
   const [studyMode, setStudyMode] = useState<StudyMode>('none');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [flashcards, setFlashcards] = useState<FlashcardDeck | null>(null);
+  const [flashcardDecks, setFlashcardDecks] = useState<FlashcardDeck[]>([]);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
   const [isLoadingFlashcards, setIsLoadingFlashcards] = useState(false);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
@@ -219,19 +220,7 @@ export function TranscriptionDetail() {
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!id) return;
-
-    setIsGeneratingPdf(true);
-    try {
-      const { pdfUrl } = await api.generatePdf(id, showRaw ? 'raw' : 'structured');
-      window.open(pdfUrl, '_blank');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate PDF');
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
+  
 
   const handleDownloadSource = async () => {
     if (!transcription?.audioUrl) return;
@@ -313,9 +302,10 @@ export function TranscriptionDetail() {
     setIsLoadingFlashcards(true);
     setError(null);
     try {
-      const storedDeck = await api.getFlashcards(id);
-      if (storedDeck) {
-        setFlashcards(storedDeck);
+      const response = await api.getFlashcards(id);
+      if (response && response.deck) {
+        setFlashcards(response.deck);
+        setFlashcardDecks(response.decks || [response.deck]);
         setStudyMode('flashcards');
         return;
       }
@@ -329,6 +319,7 @@ export function TranscriptionDetail() {
     try {
       const generatedDeck = await api.regenerateFlashcards(id, 20);
       setFlashcards(generatedDeck);
+      setFlashcardDecks(prev => [generatedDeck, ...prev]);
       setStudyMode('flashcards');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate flashcards');
@@ -358,6 +349,7 @@ export function TranscriptionDetail() {
     try {
       const generatedDeck = await api.regenerateFlashcards(id, 20);
       setFlashcards(generatedDeck);
+      setFlashcardDecks(prev => [generatedDeck, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate flashcards');
     } finally {
@@ -426,9 +418,12 @@ export function TranscriptionDetail() {
       <div className="max-w-4xl mx-auto">
         <FlashcardView 
           deck={flashcards} 
+          decks={flashcardDecks}
+          transcriptionId={id}
           onClose={() => setStudyMode('none')} 
           onRegenerate={handleRegenerateFlashcards}
           isRegenerating={isGeneratingFlashcards}
+          onDeckSelect={setFlashcards}
         />
       </div>
     );
@@ -511,48 +506,58 @@ export function TranscriptionDetail() {
 
         {/* Main content area */}
         <main className="flex-1 min-w-0 document-content">
-          {/* Editable Title */}
-          <div className="mb-2">
-            {isAuthenticated ? (
-              <EditableTitle 
-                value={transcription.title} 
-                onChange={handleTitleChange}
-                isLoading={isSavingTitle}
-              />
-            ) : (
-              <h1 className="text-2xl font-bold">{transcription.title}</h1>
-            )}
-          </div>
-
-          {/* Status badge (inline with title area when not completed) */}
-          {!isCompleted && (
-            <div className="mb-2">
-              <StatusBadge status={transcription.status as TranscriptionStatus} />
+          {/* Header section with gradient background */}
+          <div className="mb-8 pb-6 border-b border-border/60 relative">
+            {/* Subtle gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent -z-10 rounded-2xl opacity-50" />
+            
+            {/* Editable Title */}
+            <div className="mb-4">
+              {isAuthenticated ? (
+                <EditableTitle 
+                  value={transcription.title} 
+                  onChange={handleTitleChange}
+                  isLoading={isSavingTitle}
+                />
+              ) : (
+                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                  {transcription.title}
+                </h1>
+              )}
             </div>
-          )}
 
-          {/* Property row (metadata) */}
-          <div className="property-row mb-4">
-            <div className="property-item">
-              <Clock className="h-4 w-4" />
-              <span>{formatDate(transcription.createdAt, 'long')}</span>
-            </div>
-            {transcription.audioDuration && (
-              <div className="property-item">
-                <FileText className="h-4 w-4" />
-                <span>{formatDuration(transcription.audioDuration)}</span>
+            {/* Status badge (inline with title area when not completed) */}
+            {!isCompleted && (
+              <div className="mb-4">
+                <StatusBadge status={transcription.status as TranscriptionStatus} />
               </div>
             )}
-            {transcription.detectedLanguage && (
-              <div className="property-item">
-                <Globe className="h-4 w-4" />
-                <span>{transcription.detectedLanguage}</span>
+
+            {/* Property row (metadata) - Skeuomorphic styling */}
+            <div className="flex flex-wrap gap-3 mt-2">
+              <div className="neu-button-subtle flex items-center gap-2 px-4 py-2 select-none cursor-default">
+                <Clock className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm">{formatDate(transcription.createdAt, 'long')}</span>
               </div>
-            )}
+              
+              {!!transcription.audioDuration && !['pdf', 'pptx', 'ppt', 'docx'].includes(transcription.sourceType) && !transcription.whisperModel?.toLowerCase().includes('document') && (
+                <div className="neu-button-subtle flex items-center gap-2 px-4 py-2 select-none cursor-default">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm">{formatDuration(transcription.audioDuration)}</span>
+                </div>
+              )}
+              
+              {transcription.detectedLanguage && (
+                <div className="neu-button-subtle flex items-center gap-2 px-4 py-2 select-none cursor-default">
+                  <Globe className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm">{transcription.detectedLanguage}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Action bar */}
-          <div className="flex items-center justify-between py-4 border-b border-border mb-6">
+          {/* Action bar - Enhanced styling */}
+          <div className="flex items-center justify-between py-5 px-4 bg-muted/40 rounded-xl border border-border/50 mb-8 backdrop-blur-sm">
             {/* Left side - Study actions */}
             <div className="flex items-center gap-1.5">
               {isCompleted && isAuthenticated && (
@@ -599,23 +604,7 @@ export function TranscriptionDetail() {
 
             {/* Right side - Management actions */}
             <div className="flex items-center gap-1.5">
-              {isCompleted && isAuthenticated && (
-                <Button
-                  variant="outline"
-                  onClick={handleDownloadPdf}
-                  disabled={isGeneratingPdf}
-                  size="sm"
-                  className="neu-button"
-                  title="Download PDF"
-                >
-                  {isGeneratingPdf ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  <span className="hidden sm:inline ml-1.5">PDF</span>
-                </Button>
-              )}
+              
 
               <Button
                 onClick={handleShare}
@@ -683,21 +672,21 @@ export function TranscriptionDetail() {
             </Card>
           )}
 
-          {/* Progress (when processing) */}
+          {/* Progress (when processing) - Enhanced styling */}
           {isProcessing && (
-            <Card className="mb-6">
+            <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent backdrop-blur-sm">
               <CardContent className="pt-6">
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-status-info animate-pulse-soft" />
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="flex items-center gap-2 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-status-info animate-pulse-soft shadow-lg shadow-status-info/50" />
                       {transcription.status === 'pending' && 'Waiting to start...'}
                       {transcription.status === 'processing' && 'Transcribing audio...'}
                       {transcription.status === 'structuring' && 'Structuring notes...'}
                     </span>
-                    <span className="font-medium">{Math.round(transcription.progress * 100)}%</span>
+                    <span className="font-bold text-primary">{Math.round(transcription.progress * 100)}%</span>
                   </div>
-                  <Progress value={transcription.progress * 100} />
+                  <Progress value={transcription.progress * 100} className="h-2" />
                 </div>
               </CardContent>
             </Card>
@@ -706,32 +695,41 @@ export function TranscriptionDetail() {
           {/* Content */}
           {isCompleted && (
             <div className="document-content">
-              {/* View toggle */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-sm text-muted-foreground">
-                  {transcription.whisperModel && `Model: ${transcription.whisperModel}`}
+              {/* View toggle - Enhanced styling */}
+              <div className="flex items-center justify-between mb-6 p-4 bg-muted/30 rounded-xl border border-border/50">
+                <div className="text-sm font-medium text-muted-foreground">
+                  {transcription.whisperModel && (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
+                      Model: {transcription.whisperModel}
+                    </span>
+                  )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowRaw(!showRaw)}
-                  className="neu-button"
-                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowRaw(!showRaw)}
+                    className="neu-button hover:bg-primary/10 transition-all duration-200"
+                  >
                   <Eye className="h-4 w-4 mr-2" />
                   {showRaw ? 'Show Structured' : 'Show Raw'}
                 </Button>
               </div>
 
-              {/* Markdown content */}
+              {/* Markdown content - Enhanced container */}
               {showRaw ? (
-                <pre className="whitespace-pre-wrap text-sm bg-muted/50 p-4 rounded-lg overflow-x-auto border">
-                  {transcription.transcriptionText || 'No raw transcription available'}
-                </pre>
+                <div className="bg-gradient-to-br from-muted/40 to-muted/20 rounded-xl border border-border/50 p-6 backdrop-blur-sm">
+                  <pre className="whitespace-pre-wrap text-sm overflow-x-auto font-mono leading-relaxed">
+                    {transcription.transcriptionText || 'No raw transcription available'}
+                  </pre>
+                </div>
               ) : (
-                <Markdown 
-                  content={content} 
-                  collapsible
-                />
+                <div className="prose prose-lg max-w-none dark:prose-invert prose-headings:font-semibold prose-p:text-foreground/90 prose-a:text-primary prose-strong:text-foreground prose-code:text-primary">
+                  <Markdown 
+                    content={content} 
+                    collapsible
+                  />
+                </div>
               )}
             </div>
           )}
@@ -740,7 +738,7 @@ export function TranscriptionDetail() {
         {/* Right sidebar - Source file player (hidden on mobile) */}
         {transcription.audioUrl && (
           <aside className="hidden xl:block w-64 flex-shrink-0 sticky top-6 self-start">
-            <Card className="!gap-3 p-4">
+            <Card className="!gap-3 p-4 neu-panel">
               <CardHeader className="p-0">
                 <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                   {transcription.sourceType === 'video' ? (
@@ -752,23 +750,28 @@ export function TranscriptionDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <button
+                  <button
                     onClick={handleDownloadSource}
                     disabled={isDownloadingSource}
-                    className="relative group aspect-square bg-muted/50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-muted/70 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="relative group w-full aspect-square bg-muted/40 border-2 border-dashed border-muted-foreground/20 rounded-xl flex items-center justify-center cursor-pointer hover:bg-muted/60 hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                     title="Download source media"
                   >
                     {transcription.sourceType === 'video' ? (
-                      <Video className="h-16 w-16 text-muted-foreground/50" />
+                      <Video className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
                     ) : (
-                      <Music className="h-16 w-16 text-muted-foreground/50" />
+                      <Music className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
                     )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
-                      {isDownloadingSource ? (
-                        <Loader2 className="h-8 w-8 text-white animate-spin" />
-                      ) : (
-                        <Download className="h-8 w-8 text-white" />
-                      )}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 bg-background/10 backdrop-blur-[2px] rounded-xl">
+                      <div className="bg-card shadow-lg rounded-full p-4 mb-2 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-200">
+                        {isDownloadingSource ? (
+                          <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                        ) : (
+                          <Download className="h-6 w-6 text-primary" />
+                        )}
+                      </div>
+                      <span className="text-xs font-semibold text-foreground/90 bg-card/90 px-3 py-1 rounded-full shadow-sm transform translate-y-4 group-hover:translate-y-0 transition-transform duration-200 delay-75">
+                        {isDownloadingSource ? 'Downloading...' : 'Download'}
+                      </span>
                     </div>
                   </button>
               </CardContent>

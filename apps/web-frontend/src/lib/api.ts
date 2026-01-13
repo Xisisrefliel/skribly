@@ -139,6 +139,17 @@ class ApiClient {
     });
   }
 
+  async uploadFilesBatch(files: File[], title: string): Promise<UploadResponse> {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    formData.append('title', title);
+
+    return this.request<UploadResponse>('/api/upload-batch', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
   async startTranscription(id: string, mode: 'fast' | 'quality' = 'quality'): Promise<TranscribeResponse> {
     return this.request<TranscribeResponse>(`/api/transcribe/${id}`, {
       method: 'POST',
@@ -170,15 +181,7 @@ class ApiClient {
     return response.transcription;
   }
 
-  async generatePdf(id: string, type: 'structured' | 'raw' = 'structured'): Promise<{ pdfUrl: string }> {
-    return this.request<{ pdfUrl: string }>(`/api/transcription/${id}/pdf`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ type }),
-    });
-  }
+  
 
   // Study features
 
@@ -215,10 +218,10 @@ class ApiClient {
   /**
    * Get stored flashcards for a transcription (auto-generated after transcription completes)
    */
-  async getFlashcards(transcriptionId: string): Promise<FlashcardDeck | null> {
+  async getFlashcards(transcriptionId: string): Promise<GenerateFlashcardsResponse | null> {
     try {
       const response = await this.request<GenerateFlashcardsResponse>(`/api/transcription/${transcriptionId}/flashcards`);
-      return response.deck;
+      return response;
     } catch (error) {
       // 404 means flashcards not yet generated
       if (error instanceof Error && error.message.includes('not yet generated')) {

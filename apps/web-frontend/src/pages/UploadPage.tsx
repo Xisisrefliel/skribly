@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Link, Navigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Upload, Zap, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export function UploadPage() {
+  useDocumentTitle('Notism - Upload Recording');
   const { isAuthenticated, isLoading } = useAuth();
   const [transcriptionMode, setTranscriptionMode] = useState<'fast' | 'quality'>('quality');
 
@@ -39,7 +41,7 @@ export function UploadPage() {
             </div>
             <div>
               <h1 className="text-lg font-semibold">Upload Recording</h1>
-              <p className="text-xs text-muted-foreground">Add a new lecture to transcribe</p>
+              <p className="text-xs text-muted-foreground">Add a new recording to transcribe</p>
             </div>
           </div>
         </div>
@@ -56,10 +58,10 @@ export function UploadPage() {
             <button
               onClick={() => setTranscriptionMode('fast')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2",
                 transcriptionMode === 'fast'
-                  ? "bg-status-warning-soft text-status-warning border-2 border-status-warning"
-                  : "neu-button hover:bg-muted"
+                  ? "bg-status-warning-soft text-status-warning border-status-warning/60 shadow-sm"
+                  : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted/70 hover:border-border/50"
               )}
             >
               <Zap className="h-4 w-4" />
@@ -68,10 +70,10 @@ export function UploadPage() {
             <button
               onClick={() => setTranscriptionMode('quality')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2",
                 transcriptionMode === 'quality'
-                  ? "bg-status-purple-soft text-status-purple border-2 border-status-purple"
-                  : "neu-button hover:bg-muted"
+                  ? "bg-status-purple-soft text-status-purple border-status-purple/60 shadow-sm"
+                  : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted/70 hover:border-border/50"
               )}
             >
               <Sparkles className="h-4 w-4" />

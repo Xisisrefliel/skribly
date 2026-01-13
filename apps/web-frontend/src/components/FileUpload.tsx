@@ -2,10 +2,10 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   CloudUpload, 
-  CheckCircle2, 
   FileAudio, 
   FileVideo,
   FileText,
+  Files,
   X, 
   Loader2,
   Upload
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 import { api } from '@/lib/api';
-import { formatFileSize } from '@/lib/utils';
+import { formatFileSize, cn } from '@/lib/utils';
 
 interface FileUploadProps {
   onUploadComplete?: (id: string) => void;
@@ -25,31 +25,22 @@ interface FileUploadProps {
 export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: FileUploadProps) {
   const navigate = useNavigate();
   const { invalidateTranscriptions } = useTranscriptionCache();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const acceptedTypes = [
+  const acceptedMimeTypes = [
     // Audio formats
-    'audio/mpeg',
-    'audio/mp3',
-    'audio/mp4',
-    'audio/m4a',
-    'audio/wav',
-    'audio/ogg',
-    'audio/flac',
-    'audio/webm',
+    'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/webm',
     // Video formats
-    'video/mp4',
-    'video/quicktime',
-    'video/webm',
-    'video/ogg',
+    'video/mp4', 'video/quicktime', 'video/webm', 'video/ogg',
     // Document formats
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
     'application/vnd.ms-powerpoint', // .ppt
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
   ];
 
   const isVideoFile = (file: File) => file.type.startsWith('video/');
@@ -57,9 +48,21 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
     file.type === 'application/pdf' ||
     file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
     file.type === 'application/vnd.ms-powerpoint' ||
+    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     file.name.endsWith('.pdf') ||
     file.name.endsWith('.pptx') ||
-    file.name.endsWith('.ppt');
+    file.name.endsWith('.ppt') ||
+    file.name.endsWith('.docx');
+
+  const isValidFile = (file: File) => {
+    return acceptedMimeTypes.includes(file.type) || 
+           file.type.startsWith('audio/') || 
+           file.type.startsWith('video/') ||
+           file.name.endsWith('.pdf') ||
+           file.name.endsWith('.pptx') ||
+           file.name.endsWith('.ppt') ||
+           file.name.endsWith('.docx');
+  };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -71,57 +74,81 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
     setIsDragging(false);
   }, []);
 
+  const processFiles = (newFiles: FileList | null) => {
+    if (!newFiles) return;
+    
+    const validFiles: File[] = [];
+    const invalidFiles: string[] = [];
+
+    Array.from(newFiles).forEach(f => {
+      if (isValidFile(f)) {
+        validFiles.push(f);
+      } else {
+        invalidFiles.push(f.name);
+      }
+    });
+
+    if (invalidFiles.length > 0) {
+      setError(`Invalid file type(s): ${invalidFiles.join(', ')}. Please upload audio, video, or documents (PDF, PPTX, DOCX).`);
+    }
+
+    if (validFiles.length > 0) {
+      setFiles(prev => {
+        const combined = [...prev, ...validFiles];
+        // Ensure no duplicates by name and size
+        const unique = combined.filter((f, index, self) => 
+          index === self.findIndex((t) => (
+            t.name === f.name && t.size === f.size
+          ))
+        );
+        
+        if (!title && unique.length > 0) {
+          const defaultTitle = unique[0].name.replace(/\.[^/.]+$/, '') + (unique.length > 1 ? ' and others' : '');
+          setTitle(defaultTitle);
+        }
+        
+        return unique;
+      });
+    }
+  };
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     setError(null);
-
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      if (acceptedTypes.includes(droppedFile.type) || 
-          droppedFile.type.startsWith('audio/') || 
-          droppedFile.type.startsWith('video/') ||
-          droppedFile.name.endsWith('.pdf') ||
-          droppedFile.name.endsWith('.pptx') ||
-          droppedFile.name.endsWith('.ppt')) {
-        setFile(droppedFile);
-        if (!title) {
-          // Use filename without extension as default title
-          const defaultTitle = droppedFile.name.replace(/\.[^/.]+$/, '');
-          setTitle(defaultTitle);
-        }
-      } else {
-        setError('Please upload an audio, video, or document file (PDF, PPTX)');
-      }
-    }
+    processFiles(e.dataTransfer.files);
   }, [title]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      if (!title) {
-        const defaultTitle = selectedFile.name.replace(/\.[^/.]+$/, '');
-        setTitle(defaultTitle);
-      }
-    }
+    processFiles(e.target.files);
   }, [title]);
 
-  const handleRemoveFile = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFile(null);
-    setTitle('');
-  }, []);
+  const handleRemoveFile = useCallback((index: number) => {
+    setFiles(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      if (updated.length === 0) {
+        setTitle('');
+      } else if (title.includes(' and others')) {
+         // Keep existing title logic or just leave it
+      }
+      return updated;
+    });
+  }, [title]);
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setError(null);
 
     try {
-      const response = await api.uploadFile(file, title || 'Untitled Lecture');
+      let response;
+      if (files.length === 1) {
+        response = await api.uploadFile(files[0], title || 'Untitled Recording');
+      } else {
+        response = await api.uploadFilesBatch(files, title || 'Batch Document Study');
+      }
       
       // Start transcription automatically
       await api.startTranscription(response.id, transcriptionMode);
@@ -145,11 +172,13 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
     <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Upload className="h-5 w-5 text-primary" />
-          Upload Audio, Video, or Documents
+          {files.length > 1 ? <Files className="h-5 w-5 text-primary" /> : <Upload className="h-5 w-5 text-primary" />}
+          Upload {files.length > 1 ? 'Documents' : 'Audio, Video, or Documents'}
         </CardTitle>
         <CardDescription>
-          Upload a lecture recording or document (PDF, PowerPoint) to transcribe it into notes
+          {files.length > 1 
+            ? `Combine ${files.length} documents into one set of study notes` 
+            : "Upload recordings or documents (PDF, PPTX, DOCX) to transcribe them into notes"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -160,82 +189,93 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
           onDrop={handleDrop}
           role="button"
           tabIndex={0}
-          aria-label="Drop zone for audio or video files. Click or drag and drop to upload."
-          className={`
-            drop-zone relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
-            transition-all duration-200 ease-out
-            outline-none
-            ${isDragging ? 'drop-zone-active border-primary' : 'border-muted-foreground/25'}
-            ${file ? 'bg-status-success-soft border-status-success/50' : 'hover:border-primary/50 hover:bg-muted/30'}
-          `}
+          aria-label="Drop zone for files. Click or drag and drop to upload."
+          className={cn(
+            "drop-zone relative border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 ease-out outline-none min-h-[200px] flex items-center justify-center",
+            isDragging ? "drop-zone-active border-primary" : "border-border/60",
+            files.length > 0 ? "bg-status-success-soft border-status-success/40" : "hover:border-primary/40 hover:bg-muted/40"
+          )}
         >
           <input
             type="file"
-            accept="audio/*,video/*,.pdf,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
+            multiple
+            accept="audio/*,video/*,.pdf,.pptx,.ppt,.docx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={handleFileSelect}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             aria-hidden="true"
           />
           
-          {file ? (
-            <div className="space-y-3 animate-scale-in">
-              <div className="flex items-center justify-center">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-2xl bg-status-success/10 flex items-center justify-center">
-                    {isDocumentFile(file) ? (
-                      <FileText className="h-8 w-8 text-status-success" />
-                    ) : isVideoFile(file) ? (
-                      <FileVideo className="h-8 w-8 text-status-success" />
+          {files.length > 0 ? (
+            <div className="space-y-4 animate-scale-in">
+              <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+                {files.slice(0, 5).map((f, i) => (
+                  <div key={i} className="relative w-14 h-14 rounded-xl bg-status-success/15 border-2 border-card flex items-center justify-center shadow-sm hover:scale-105 transition-transform duration-200">
+                    {isDocumentFile(f) ? (
+                      <FileText className="h-7 w-7 text-status-success" />
+                    ) : isVideoFile(f) ? (
+                      <FileVideo className="h-7 w-7 text-status-success" />
                     ) : (
-                      <FileAudio className="h-8 w-8 text-status-success" />
+                      <FileAudio className="h-7 w-7 text-status-success" />
                     )}
                   </div>
-                  <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-status-success flex items-center justify-center">
-                    <CheckCircle2 className="h-4 w-4 text-white" />
+                ))}
+                {files.length > 5 && (
+                  <div className="relative w-14 h-14 rounded-xl bg-muted/60 border-2 border-card flex items-center justify-center shadow-sm text-sm font-bold text-muted-foreground">
+                    +{files.length - 5}
                   </div>
-                </div>
+                )}
               </div>
-              <div>
-                <p className="font-medium text-foreground truncate max-w-[280px] mx-auto">
-                  {file.name}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {formatFileSize(file.size)}
-                </p>
+              
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-rounded scrollbar-track-transparent scrollbar-thumb-muted-foreground/20">
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center justify-between bg-card/80 p-3 rounded-xl border border-status-success/30 hover:bg-card transition-all duration-200 group">
+                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                      {isDocumentFile(f) ? <FileText className="h-5 w-5 text-status-success shrink-0" /> : isVideoFile(f) ? <FileVideo className="h-5 w-5 text-status-success shrink-0" /> : <FileAudio className="h-5 w-5 text-status-success shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm font-medium text-foreground block truncate">{f.name}</span>
+                        <span className="text-xs text-muted-foreground">{formatFileSize(f.size)}</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleRemoveFile(i); }}
+                      className="text-muted-foreground hover:text-destructive p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-50 group-hover:opacity-100"
+                      title="Remove file"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRemoveFile}
-                className="neu-button-subtle text-muted-foreground hover:text-destructive"
-              >
-                <X className="h-4 w-4 mr-1" />
-                Remove
-              </Button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center justify-center">
-                <div className={`
-                  w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-200
-                  ${isDragging 
-                    ? 'bg-primary/20 scale-110' 
-                    : 'bg-muted'
-                  }
-                `}>
-                  <CloudUpload className={`
-                    h-8 w-8 transition-colors duration-200
-                    ${isDragging ? 'text-primary' : 'text-muted-foreground'}
-                  `} />
+                <div className={cn(
+                  "w-20 h-20 rounded-3xl flex items-center justify-center transition-all duration-200",
+                  isDragging ? "bg-primary/20 scale-110" : "bg-muted/60"
+                )}>
+                  <CloudUpload className={cn(
+                    "h-10 w-10 transition-colors duration-200",
+                    isDragging ? "text-primary" : "text-muted-foreground"
+                  )} />
                 </div>
               </div>
               <div>
-                <p className="font-medium text-foreground">
-                  {isDragging ? 'Drop your file here' : 'Drop your file here or click to browse'}
+                <p className="font-semibold text-lg text-foreground">
+                  {isDragging ? 'Drop your files here' : 'Drop files here or click to browse'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Supports MP3, M4A, WAV, MP4, MOV, PDF, PPTX, and more
+                <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
+                  Upload audio recordings, videos, or documents to generate study notes
                 </p>
+                <div className="flex flex-wrap justify-center gap-2 mt-3">
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">MP3</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">M4A</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">WAV</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">MP4</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">PDF</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">PPTX</span>
+                  <span className="text-xs bg-muted/60 px-2.5 py-1 rounded-lg text-muted-foreground font-medium">DOCX</span>
+                </div>
               </div>
             </div>
           )}
@@ -244,11 +284,11 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
         {/* Title input */}
         <div className="space-y-2">
           <label htmlFor="title" className="text-sm font-medium">
-            Title
+            {files.length > 1 ? 'Batch Title' : 'Title'}
           </label>
           <Input
             id="title"
-            placeholder="Enter a title for your lecture"
+            placeholder={files.length > 1 ? "Enter a title for this batch of documents" : "Enter a title for your recording"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             aria-describedby={error ? "upload-error" : undefined}
@@ -260,7 +300,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
           <div 
             id="upload-error"
             role="alert"
-            className="p-3 rounded-lg bg-status-error-soft border border-status-error/20 text-status-error text-sm"
+            className="p-3 rounded-xl bg-status-error-soft border border-status-error/30 text-status-error text-sm"
           >
             {error}
           </div>
@@ -269,19 +309,19 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
         {/* Upload button */}
         <Button
           onClick={handleUpload}
-          disabled={!file || isUploading}
+          disabled={files.length === 0 || isUploading}
           className="w-full neu-button-primary"
           size="lg"
         >
           {isUploading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Uploading...
+              Uploading {files.length} {files.length === 1 ? 'file' : 'files'}...
             </>
           ) : (
             <>
               <Upload className="h-4 w-4 mr-2" />
-              Upload & Transcribe
+              Upload & Generate Notes
             </>
           )}
         </Button>

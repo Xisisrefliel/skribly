@@ -538,7 +538,7 @@ export const d1Service = {
     // Fetch tags for each transcription
     for (const transcription of transcriptions) {
       const tags = await this.getTagsByTranscription(transcription.id);
-      (transcription as Transcription & { tags: Array<{ id: string; userId: string; name: string; color: string; createdAt: string }> }).tags = tags;
+      (transcription as any).tags = tags;
     }
     
     return transcriptions;
@@ -890,6 +890,60 @@ export const d1Service = {
         [card.id, deck.id, card.front, card.back, card.category || null, i]
       );
     }
+  },
+
+  /**
+   * Get all flashcard decks for a transcription
+   */
+  async getAllFlashcardDecks(transcriptionId: string): Promise<FlashcardDeck[]> {
+    // Get deck metadata
+    const deckRows = await executeQuery<{
+      id: string;
+      transcription_id: string;
+      title: string;
+      created_at: string;
+    }>(
+      `SELECT id, transcription_id, title, created_at 
+       FROM flashcard_decks 
+       WHERE transcription_id = ? 
+       ORDER BY created_at DESC`,
+      [transcriptionId]
+    );
+
+    const decks: FlashcardDeck[] = [];
+
+    for (const deckRow of deckRows) {
+      // Get cards
+      const cardRows = await executeQuery<{
+        id: string;
+        front: string;
+        back: string;
+        category: string | null;
+      }>(
+        `SELECT id, front, back, category 
+         FROM flashcards 
+         WHERE deck_id = ? 
+         ORDER BY card_order`,
+        [deckRow.id]
+      );
+
+      const cards: Flashcard[] = cardRows.map(row => ({
+        id: row.id,
+        front: row.front,
+        back: row.back,
+        category: row.category || undefined,
+      }));
+
+      decks.push({
+        id: deckRow.id,
+        transcriptionId: deckRow.transcription_id,
+        title: deckRow.title,
+        cards,
+        createdAt: deckRow.created_at,
+      });
+    }
+
+    return decks;
   },
 
   /**

@@ -7,7 +7,7 @@ export type TranscriptionStatus =
   | 'error';       // Failed to transcribe
 
 // Source file type for transcriptions
-export type SourceType = 'audio' | 'video' | 'pdf' | 'pptx' | 'ppt';
+export type SourceType = 'audio' | 'video' | 'pdf' | 'pptx' | 'ppt' | 'docx';
 
 // Folder type
 export interface Folder {
@@ -39,8 +39,9 @@ export interface Transcription {
   status: TranscriptionStatus;
   progress: number;              // 0.0 to 1.0
   errorMessage: string | null;
-  pdfKey: string | null;         // R2 storage key for pre-generated PDF
-  pdfGeneratedAt: string | null; // ISO date string when PDF was generated
+  pdfKey: string | null;
+  pdfGeneratedAt: string | null;
+  
   whisperModel: string | null;   // Model used for transcription (e.g., 'whisper-large-v3')
   detectedLanguage: string | null; // Language detected in the transcription
   isPublic: boolean;             // Whether the transcription is publicly shareable
@@ -126,6 +127,7 @@ export interface GenerateFlashcardsRequest {
 
 export interface GenerateFlashcardsResponse {
   deck: FlashcardDeck;
+  decks?: FlashcardDeck[];
 }
 
 // API request/response types
@@ -208,6 +210,7 @@ export interface UpdateTranscriptionRequest {
 // API endpoints
 export const API_ENDPOINTS = {
   UPLOAD: '/api/upload',
+  BATCH_UPLOAD: '/api/upload-batch',
   TRANSCRIBE: '/api/transcribe',
   TRANSCRIPTIONS: '/api/transcriptions',
   TRANSCRIPTION: '/api/transcription',

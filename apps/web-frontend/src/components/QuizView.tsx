@@ -128,7 +128,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
         <CardContent className="space-y-6 py-6">
           <div className="text-center space-y-2">
             <div className={cn(
-              "text-6xl font-bold",
+              "text-5xl sm:text-6xl font-bold",
               isGreatScore ? "text-status-success" : isGoodScore ? "text-status-warning" : "text-primary"
             )}>
               {percentage}%
@@ -144,13 +144,13 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
             )}
           </div>
           
-          <div className="flex justify-center gap-3">
-            <Button variant="outline" onClick={handleRestart} className="neu-button">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 px-4 sm:px-0">
+            <Button variant="outline" onClick={handleRestart} className="neu-button w-full sm:w-auto">
               <RotateCcw className="w-4 h-4 mr-2" />
               Try Again
             </Button>
             {onRegenerate && (
-              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating} className="neu-button">
+              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating} className="neu-button w-full sm:w-auto">
                 {isRegenerating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -164,7 +164,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
                 )}
               </Button>
             )}
-            <Button onClick={onClose} className="neu-button-primary">
+            <Button onClick={onClose} className="neu-button-primary w-full sm:w-auto">
               <Check className="w-4 h-4 mr-2" />
               Done
             </Button>
@@ -180,10 +180,10 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
                   <div 
                     key={q.id} 
                     className={cn(
-                      "p-3 rounded-lg border space-y-1",
+                      "p-3 rounded-xl border space-y-1 transition-all duration-200",
                       isCorrect 
-                        ? "bg-status-success-soft border-status-success/20" 
-                        : "bg-status-error-soft border-status-error/20"
+                        ? "bg-status-success-soft border-status-success/30" 
+                        : "bg-status-error-soft border-status-error/30"
                     )}
                   >
                     <div className="flex items-start gap-2">
@@ -210,33 +210,35 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
 
   return (
     <Card className={cn(
-      "w-full max-w-2xl mx-auto",
+      "w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm",
       showCelebration && "animate-celebrate"
     )}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Question {currentIndex + 1} of {quiz.questions.length}</CardTitle>
-            <CardDescription>{quiz.title}</CardDescription>
+      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-4 overflow-hidden">
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="flex-1 min-w-0 mr-2">
+            <CardTitle className="text-base sm:text-lg truncate pr-1">Question {currentIndex + 1} of {quiz.questions.length}</CardTitle>
+            <p className="text-xs sm:text-sm mt-1 text-muted-foreground truncate max-w-full">
+              {quiz.title}
+            </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="neu-button-subtle">
-            <X className="w-4 h-4 mr-1" />
-            Exit
+          <Button variant="ghost" size="sm" onClick={onClose} className="neu-button-subtle shrink-0 px-2 h-8">
+            <X className="w-4 h-4 sm:mr-1" />
+            <span className="hidden sm:inline">Exit</span>
           </Button>
         </div>
-        <Progress value={progress} className="h-2" />
+        <Progress value={progress} className="h-2 w-full" />
       </CardHeader>
-      <CardContent className="space-y-6">
-        <h2 className="text-xl font-medium leading-relaxed">{currentQuestion.question}</h2>
+      <CardContent className="space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
+        <h2 className="text-lg sm:text-xl font-medium leading-relaxed">{currentQuestion.question}</h2>
 
-        <div className="space-y-2" role="radiogroup" aria-label="Answer options">
+        <div className="space-y-3" role="radiogroup" aria-label="Answer options">
           {currentQuestion.options.map((option, index) => {
             const isSelected = index === selectedAnswer;
             const isCorrect = index === currentQuestion.correctAnswer;
             const isWrongSelection = showResult && isSelected && !isCorrect;
             
             return (
-              <button
+                <button
                 key={index}
                 type="button"
                 role="radio"
@@ -244,24 +246,24 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
                 disabled={showResult}
                 onClick={() => handleSelectAnswer(index)}
                 className={cn(
-                  "w-full text-left py-3 px-4 rounded-lg border-2 transition-all duration-200",
-                  "focus:outline-none",
+                  "w-full text-left py-3 px-3 sm:px-4 rounded-xl border-2 transition-all duration-200",
+                  "focus:outline-none min-h-[3.5rem]",
                   "disabled:cursor-not-allowed",
                   // Default state
-                  !showResult && !isSelected && "border-border bg-card hover:border-primary/50 hover:bg-muted/30",
+                  !showResult && !isSelected && "border-border bg-card hover:border-primary/40 hover:bg-muted/40",
                   // Selected state (before submission)
-                  !showResult && isSelected && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                  !showResult && isSelected && "border-primary bg-primary/8 ring-2 ring-primary/25",
                   // Correct answer (after submission)
                   showResult && isCorrect && "border-status-success bg-status-success-soft",
                   // Wrong selection (after submission)
                   isWrongSelection && "border-status-error bg-status-error-soft",
                   // Unselected wrong answers (after submission)
-                  showResult && !isCorrect && !isSelected && "border-border bg-muted/30 opacity-60"
+                  showResult && !isCorrect && !isSelected && "border-border bg-muted/40 opacity-60"
                 )}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <span className={cn(
-                    "flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm font-medium",
+                    "flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm font-medium mt-0.5",
                     !showResult && !isSelected && "border-muted-foreground/30 text-muted-foreground",
                     !showResult && isSelected && "border-primary bg-primary text-primary-foreground",
                     showResult && isCorrect && "border-status-success bg-status-success text-white",
@@ -277,7 +279,7 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
                     )}
                   </span>
                   <span className={cn(
-                    "flex-1",
+                    "flex-1 text-sm sm:text-base pt-0.5",
                     showResult && isCorrect && "font-medium text-status-success",
                     isWrongSelection && "text-status-error"
                   )}>
@@ -288,14 +290,20 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
             );
           })}
         </div>
-
-        {showResult && (
-          <div className={cn(
-            "p-4 py-6 rounded-lg border animate-fade-in-up",
-            selectedAnswer === currentQuestion.correctAnswer 
-              ? "bg-status-success-soft border-status-success/20" 
-              : "bg-status-error-soft border-status-error/20"
-          )}>
+      </CardContent>
+      
+      {/* Footer / Feedback Section */}
+      <div className={cn(
+        "sticky bottom-0 border-t z-10 transition-all duration-200",
+        "p-4 -mx-4 -mb-4 sm:p-6 sm:mx-0 sm:mb-0 sm:rounded-b-xl", // Mobile: negative margins to flush, no radius. Desktop: rounded bottom.
+        showResult 
+          ? (selectedAnswer === currentQuestion.correctAnswer 
+              ? "bg-status-success-soft border-status-success/30" 
+              : "bg-status-error-soft border-status-error/30")
+          : "bg-card/90 backdrop-blur-sm border-border/50 sm:bg-transparent sm:border-0"
+      )}>
+        {showResult ? (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-in slide-in-from-bottom-2 fade-in duration-300">
             <div className="flex items-start gap-3">
               <div className={cn(
                 "flex-shrink-0 mt-0.5",
@@ -308,33 +316,37 @@ export function QuizView({ quiz, onClose, onRegenerate, isRegenerating }: QuizVi
                 )}
               </div>
               <div>
-                <p className="font-medium mb-1">
+                <p className={cn("font-medium", selectedAnswer === currentQuestion.correctAnswer ? "text-status-success" : "text-status-error")}>
                   {selectedAnswer === currentQuestion.correctAnswer ? 'Correct!' : 'Incorrect'}
                 </p>
                 <p className="text-sm text-muted-foreground">{currentQuestion.explanation}</p>
               </div>
             </div>
+            
+            <Button 
+              onClick={handleNext} 
+              className={cn(
+                "w-full sm:w-auto shadow-sm",
+                selectedAnswer === currentQuestion.correctAnswer ? "neu-button-success" : "neu-button-destructive"
+              )}
+            >
+              {isLastQuestion ? 'See Results' : 'Next Question'}
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           </div>
-        )}
-
-        <div className="flex justify-end gap-3">
-          {!showResult ? (
+        ) : (
+          <div className="flex justify-end">
             <Button 
               onClick={handleSubmitAnswer} 
               disabled={selectedAnswer === null}
-              className="neu-button-primary"
+              className="neu-button-primary w-full sm:w-auto shadow-sm"
             >
               <Check className="w-4 h-4 mr-2" />
               Check Answer
             </Button>
-          ) : (
-            <Button onClick={handleNext} className="neu-button-primary">
-              {isLastQuestion ? 'See Results' : 'Next Question'}
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          )}
-        </div>
-      </CardContent>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }

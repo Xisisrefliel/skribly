@@ -200,11 +200,11 @@ export function TranscriptionCard({
         style={{ animationDelay: `${animationDelay}ms` }}
         render={<Link to={`/transcription/${transcription.id}`} />}
       >
-        <Card className="h-full card-hover-lift group animate-fade-in-up overflow-hidden flex flex-col">
+        <Card className="h-full card-hover-lift group animate-fade-in-up overflow-hidden flex flex-col transition-all duration-200">
           <CardHeader className="p-3 pb-2">
             {/* Title and status row */}
             <div className="flex items-start justify-between gap-2 mb-1.5">
-              <CardTitle className="text-sm font-semibold line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+              <CardTitle className="text-sm font-semibold line-clamp-2 group-hover:text-primary transition-colors duration-200 leading-snug">
                 {transcription.title}
               </CardTitle>
               <StatusBadge status={transcription.status as TranscriptionStatus} />
@@ -214,7 +214,7 @@ export function TranscriptionCard({
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Clock className="h-3 w-3 shrink-0" />
               <span>{formatDate(transcription.createdAt)}</span>
-              {transcription.audioDuration && (
+              {!!transcription.audioDuration && !['pdf', 'pptx', 'ppt', 'docx'].includes(transcription.sourceType) && !transcription.whisperModel?.toLowerCase().includes('document') && (
                 <>
                   <span className="opacity-40">·</span>
                   <span>{formatDuration(transcription.audioDuration)}</span>
@@ -282,7 +282,7 @@ export function TranscriptionCard({
           
           {/* Footer - Folder info */}
           {showFolder && folderName && (
-            <div className="px-3 py-1.5 border-t border-border/40 bg-muted/20 mt-auto">
+            <div className="px-3 py-1.5 border-t border-border/50 bg-muted/30 mt-auto">
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <FolderIcon 
                   className="h-3 w-3" 

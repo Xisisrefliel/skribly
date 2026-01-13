@@ -8,8 +8,13 @@ import {
   Layers, 
   Plus,
   Loader2,
-  Sparkles,
-  FolderOpen
+  FolderOpen,
+  FileVideo,
+  FileAudio,
+  FileText,
+  Presentation,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { TranscriptionList } from '@/components/TranscriptionList';
@@ -18,39 +23,52 @@ import { TagFilter } from '@/components/TagFilter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Drawer } from '@/components/ui/drawer';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
-const features = [
+const mainFeatures = [
   {
     icon: CloudUpload,
-    title: '1. Upload',
-    description: 'Drop your lecture recording (audio or video)',
+    title: 'Drop Anything',
+    description: 'We accept Audio, Video, PDF, and PowerPoint. Just drag and drop your lecture materials.',
     color: 'text-status-info',
     bg: 'bg-status-info-soft',
   },
   {
     icon: Mic,
-    title: '2. Transcribe',
-    description: 'AI converts speech to structured text',
+    title: 'AI Transcription',
+    description: 'Our AI instantly extracts text and speech, creating a perfect searchable transcript.',
     color: 'text-status-purple',
     bg: 'bg-status-purple-soft',
   },
   {
     icon: ClipboardCheck,
-    title: '3. Quiz',
-    description: 'Generate quizzes to test your knowledge',
+    title: 'Interactive Quizzes',
+    description: 'Automatically generate quizzes to test your understanding of the core concepts.',
     color: 'text-status-success',
     bg: 'bg-status-success-soft',
   },
   {
     icon: Layers,
-    title: '4. Flashcards',
-    description: 'Create flashcards for key concepts',
+    title: 'Smart Flashcards',
+    description: 'Complex topics are broken down into easy-to-review flashcards for long-term retention.',
     color: 'text-status-warning',
     bg: 'bg-status-warning-soft',
   },
 ];
 
+const secondaryFeatures = [
+  { icon: FileAudio, text: 'Audio (MP3, WAV, M4A)' },
+  { icon: FileVideo, text: 'Video (MP4, MOV, AVI)' },
+  { icon: FileText, text: 'PDF Documents' },
+  { icon: Presentation, text: 'PowerPoint Slides' },
+  { icon: CheckCircle2, text: 'Automatic Summarization' },
+  { icon: CheckCircle2, text: 'Key Concept Extraction' },
+  { icon: CheckCircle2, text: 'Study Folders & Tags' },
+  { icon: CheckCircle2, text: 'Cross-platform Sync' },
+];
+
 export function HomePage() {
+  useDocumentTitle('Notism - AI Study Assistant');
   const { isAuthenticated, isLoading } = useAuth();
   
   // All hooks must be called before any conditional returns
@@ -68,71 +86,89 @@ export function HomePage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-[80vh] flex flex-col">
+      <div className="min-h-screen flex flex-col">
+        {/* Simple Background - No heavy animations */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-linear-to-b from-primary/5 via-transparent to-transparent" />
+        </div>
+
         {/* Hero Section */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-12">
-          <div className="space-y-4 max-w-2xl animate-fade-in-up">
-            {/* AI Badge */}
-            <div className="inline-flex items-center rounded-full border border-status-success/30 bg-status-success-soft px-3 py-1.5 text-sm text-status-success mb-4">
-              <span className="relative flex h-2 w-2 mr-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success"></span>
-              </span>
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              Powered by AI
-            </div>
+        <div className="relative flex-1 flex flex-col items-center justify-center text-center px-4 pt-24 pb-20 max-w-7xl mx-auto w-full">
+          <div className="relative space-y-8 max-w-4xl animate-fade-in-up p-8 sm:p-12 lg:p-16 rounded-[3rem] overflow-hidden">
+            {/* Subtle glass effect for the hero area */}
+            <div className="absolute inset-0 bg-background/40 backdrop-blur-sm -z-10 rounded-[3rem] border border-white/20 shadow-2xl shadow-primary/5" />
             
-            {/* Hero Title - More vibrant gradient */}
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-linear-to-br from-foreground via-foreground/90 to-primary/80 bg-clip-text text-transparent">
-              Turn Lectures into <br className="hidden sm:block" />
-              Study Materials
+            <h1 className="text-4xl sm:text-6xl lg:text-8xl font-extrabold tracking-tight font-display text-foreground leading-[1.05]">
+              Transform your <span className="text-primary italic relative">
+                Lectures
+                <svg className="absolute -bottom-2 left-0 w-full h-3 text-primary/20" viewBox="0 0 100 10" preserveAspectRatio="none">
+                  <path d="M0 5 Q 25 0, 50 5 T 100 5" fill="none" stroke="currentColor" strokeWidth="4" />
+                </svg>
+              </span> into <br className="hidden sm:block" />
+              Study Mastery
             </h1>
             
-            <p className="text-lg text-muted-foreground max-w-lg mx-auto leading-relaxed">
-              Upload audio or video recordings and get AI-powered transcriptions, 
-              quizzes, and flashcards to supercharge your learning.
+            <p className="text-lg sm:text-2xl text-muted-foreground max-w-2xl mx-auto leading-relaxed px-4 font-medium">
+              Upload recordings, PDFs, or slides. We'll handle the transcription, 
+              summarization, and generate the perfect study materials for you.
             </p>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-4 mt-8 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-            <SignInButton mode="modal">
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-8 px-4">
+              <SignInButton mode="modal">
+                <Button 
+                  size="xl" 
+                  className="w-full sm:w-auto h-16 px-10 text-xl font-bold neu-button-primary rounded-[1.25rem] group flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-primary/20"
+                >
+                  <div className="bg-white rounded-xl p-2 mr-4 flex items-center justify-center shadow-lg shrink-0 transition-transform group-hover:rotate-[-5deg]">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                  </div>
+                  Sign in with Google
+                </Button>
+              </SignInButton>
+              
               <Button 
-                size="lg" 
-                className="text-base px-8 neu-button-primary"
+                variant="ghost" 
+                size="xl" 
+                className="w-full sm:w-auto h-16 px-10 text-xl font-bold rounded-[1.25rem] group flex items-center justify-center transition-all hover:bg-white/50 backdrop-blur-sm"
+                onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               >
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                Sign in with Google
+                How it works
+                <ArrowRight className="ml-3 h-6 w-6 transition-transform group-hover:translate-x-2" />
               </Button>
-            </SignInButton>
+            </div>
           </div>
         </div>
 
-        {/* Features Section */}
-        <div className="py-16 px-4">
-          <div className="max-w-5xl mx-auto">
-            <h2 className="text-2xl font-bold text-center mb-12">How it works</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {features.map((feature, index) => (
+        {/* Core Features Grid */}
+        <div id="features" className="py-20 px-4 relative">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-16 space-y-4">
+              <h2 className="text-3xl sm:text-4xl font-bold font-display tracking-tight">Everything you need to study smarter</h2>
+              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                Notism uses state-of-the-art AI to transform your learning materials into active study tools.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+              {mainFeatures.map((feature, index) => (
                 <Card 
                   key={feature.title} 
-                  className="border-0 bg-transparent shadow-none group"
-                  style={{ animationDelay: `${index * 100}ms` }}
+                  className="neu-floating-card border-none hover:translate-y-[-4px] transition-all duration-300 rounded-[2rem] overflow-hidden group/card"
                 >
-                  <CardContent className="py-6 text-center">
+                  <CardContent className="p-6 lg:p-8">
                     <div className={`
-                      mx-auto w-14 h-14 rounded-2xl ${feature.bg} 
-                      flex items-center justify-center mb-4
-                      transition-transform duration-200 group-hover:scale-110
+                      w-14 h-14 lg:w-16 lg:h-16 rounded-2xl ${feature.bg} 
+                      flex items-center justify-center mb-6 neu-icon-container
                     `}>
-                      <feature.icon className={`w-7 h-7 ${feature.color}`} />
+                      <feature.icon className={`w-7 h-7 lg:w-8 lg:h-8 ${feature.color}`} />
                     </div>
-                    <h3 className="font-semibold mb-1">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
+                    <h3 className="text-lg lg:text-xl font-bold mb-3 font-display tracking-tight">{feature.title}</h3>
+                    <p className="text-sm lg:text-base text-muted-foreground leading-relaxed">{feature.description}</p>
                   </CardContent>
                 </Card>
               ))}
@@ -140,9 +176,78 @@ export function HomePage() {
           </div>
         </div>
 
+        {/* Expanded Capabilities Section */}
+        <div className="py-24 px-4 max-w-7xl mx-auto w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+            <div className="space-y-10 order-2 lg:order-1">
+              <div className="space-y-4">
+                <h2 className="text-3xl sm:text-5xl font-bold font-display tracking-tight leading-tight">
+                  From raw media to <br />
+                  <span className="text-primary italic">ready-to-use</span> knowledge.
+                </h2>
+                <p className="text-muted-foreground text-base sm:text-lg leading-relaxed max-w-xl">
+                  Whether it's a 2-hour lecture recording or a 100-page PDF, 
+                  our system handles the heavy lifting so you can focus on learning.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {secondaryFeatures.map((feature) => (
+                  <div key={feature.text} className="flex items-center space-x-3 p-4 rounded-2xl bg-muted/40 border border-border/50 hover:bg-muted/60 hover:border-primary/30 transition-all duration-200 group cursor-default">
+                    <div className="p-2.5 rounded-xl bg-card shadow-sm group-hover:text-primary transition-colors duration-200 neu-icon-container">
+                      <feature.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </div>
+                    <span className="font-semibold text-xs sm:text-sm tracking-tight">{feature.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="relative group order-1 lg:order-2 w-full">
+              <div className="absolute -inset-10 bg-primary/5 rounded-[3rem] blur-3xl opacity-50" />
+              {/* Safari Fix: Use a container with explicit padding for aspect ratio fallback */}
+              <div className="relative w-full overflow-hidden neu-floating-card rounded-[2.5rem] border-none shadow-2xl">
+                <div className="aspect-square sm:aspect-video lg:aspect-square xl:aspect-video flex items-center justify-center p-6 sm:p-10">
+                  {/* Visual placeholder for the app interface */}
+                  <div className="w-full h-full rounded-2xl bg-muted/30 border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center space-y-6 p-6 text-center shadow-inner">
+                    <div className="p-5 rounded-3xl bg-background text-primary neu-icon-container shadow-xl">
+                      <CloudUpload className="h-10 w-10 sm:h-12 sm:w-12" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="font-bold text-xl sm:text-2xl font-display tracking-tight">Ready for your first upload?</p>
+                      <p className="text-muted-foreground text-sm sm:text-base max-w-xs mx-auto">Drag and drop your lecture video or audio file right here.</p>
+                    </div>
+                    <Button 
+                      className="neu-button-primary rounded-xl px-10 h-12 text-base font-semibold transition-all hover:scale-105 active:scale-95 shadow-lg"
+                      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    >
+                      Select File
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
-        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-          <p>Lecture - AI-powered learning assistant</p>
+        <footer className="py-16 text-center text-sm text-muted-foreground mt-auto">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-8">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg neu-icon-container">
+                <span className="text-white font-bold text-xl">N</span>
+              </div>
+              <div className="text-left">
+                <span className="block font-bold text-foreground text-xl font-display tracking-tight">Notism</span>
+                <span className="text-xs text-muted-foreground">© 2026. All rights reserved.</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-8">
+              <a href="#" className="hover:text-primary font-medium transition-colors duration-200 underline-offset-4 hover:underline">Privacy</a>
+              <a href="#" className="hover:text-primary font-medium transition-colors duration-200 underline-offset-4 hover:underline">Terms</a>
+              <a href="#" className="hover:text-primary font-medium transition-colors duration-200 underline-offset-4 hover:underline">Contact</a>
+            </div>
+          </div>
         </footer>
       </div>
     );
@@ -201,7 +306,7 @@ export function HomePage() {
               </Button>
               <div>
                 <h1 className="text-base sm:text-lg font-semibold">My Transcriptions</h1>
-                <p className="text-xs text-muted-foreground hidden sm:block">Upload lectures and study smarter</p>
+                <p className="text-xs text-muted-foreground hidden sm:block">Upload content and study smarter</p>
               </div>
             </div>
             <Link to="/upload">

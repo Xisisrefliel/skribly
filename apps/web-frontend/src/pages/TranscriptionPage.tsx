@@ -1,6 +1,7 @@
 import { TranscriptionDetail } from '@/components/TranscriptionDetail';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export function TranscriptionPage() {
-  // Allow viewing transcriptions without auth (TranscriptionDetail handles public/private logic)
+  useDocumentTitle('Notism - Transcription');
   return <TranscriptionDetail />;
 }

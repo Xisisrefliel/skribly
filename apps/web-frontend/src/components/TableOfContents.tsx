@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { List } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -68,6 +68,7 @@ export function extractHeadings(content: string): TOCItem[] {
 export function TableOfContents({ content, className, maxHeight }: TableOfContentsProps) {
   const [headings, setHeadings] = useState<TOCItem[]>([]);
   const [activeId, setActiveId] = useState<string>('');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Extract headings when content changes
   useEffect(() => {
@@ -87,15 +88,20 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
 
       if (headingElements.length === 0) return;
 
-      // Find the heading that's currently at or above the viewport top
-      const scrollY = window.scrollY + 120; // Offset for header
+      // Find the heading that's currently active using intersection/position
+      // We look for the last heading that has passed the "reading line" (top of screen)
+      const topOffset = 150; // Buffer for header + some breathing room
       
       let currentId = headingElements[0].id;
       
       for (const { id, element } of headingElements) {
-        if (element.offsetTop <= scrollY) {
+        const rect = element.getBoundingClientRect();
+        
+        // If the element is above or near the reading line, it's a candidate
+        if (rect.top < topOffset) {
           currentId = id;
         } else {
+          // As soon as we hit an element below the line, we know the *previous* one is active
           break;
         }
       }
@@ -106,9 +112,25 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
     // Initial check
     handleScroll();
     
+    // Use passive listener for better performance
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [headings]);
+
+  // Sync TOC scroll position with active item
+  useEffect(() => {
+    if (!activeId || !scrollContainerRef.current) return;
+
+    const activeLink = scrollContainerRef.current.querySelector(`a[href="#${activeId}"]`);
+    if (activeLink) {
+      // Use scrollIntoView with 'nearest' to avoid unnecessary movement if already visible
+      // but ensure it stays in view. 'smooth' gives it that polished feel.
+      activeLink.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest', 
+      });
+    }
+  }, [activeId]);
 
   if (headings.length === 0) {
     return null;
@@ -116,7 +138,7 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
 
   return (
     <Card 
-      className={cn('toc-card py-6 flex flex-col !gap-2', className)}
+      className={cn('toc-card py-6 flex flex-col !gap-2 neu-panel', className)}
       style={maxHeight ? { maxHeight } : undefined}
     >
       <CardHeader className="pb-0 flex-shrink-0">
@@ -125,7 +147,10 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
           Contents
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0 flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain">
+      <CardContent 
+        ref={scrollContainerRef}
+        className="pt-0 flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain"
+      >
         <nav 
           aria-label="Table of contents"
         >
@@ -143,8 +168,7 @@ export function TableOfContents({ content, className, maxHeight }: TableOfConten
                     'toc-item block w-full text-left py-1 px-2 rounded-md transition-colors',
                     'hover:bg-accent hover:text-accent-foreground',
                     'focus:outline-none focus-visible:outline-none',
-                    activeId === heading.id && 'toc-item-active bg-accent text-accent-foreground font-medium',
-                    activeId !== heading.id && 'text-muted-foreground',
+                    activeId === heading.id ? 'toc-item-active' : 'text-muted-foreground',
                   )}
                 >
                   <span className="line-clamp-2">{heading.text}</span>

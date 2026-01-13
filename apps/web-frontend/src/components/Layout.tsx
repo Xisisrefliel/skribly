@@ -1,5 +1,5 @@
 import { Link, Outlet } from 'react-router-dom';
-import { Sun, Moon, Mic, Upload, LogOut } from 'lucide-react';
+import { Sun, Moon, Upload, LogOut } from 'lucide-react';
 import { SignInButton } from '@clerk/clerk-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -85,13 +85,10 @@ export function Layout() {
           <Link 
             to="/" 
             className="flex items-center space-x-2 group outline-none rounded-lg p-1 -m-1"
-            aria-label="Lecture - Go to home"
+            aria-label="Notism - Go to home"
           >
-            <div className="neu-icon-container p-1.5 rounded-lg transition-transform group-hover:scale-105">
-              <Mic className="h-5 w-5 text-primary" />
-            </div>
             <span className="font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Lecture
+              Notism
             </span>
           </Link>
 

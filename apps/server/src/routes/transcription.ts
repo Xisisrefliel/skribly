@@ -5,8 +5,9 @@ import { d1Service } from '../services/d1.js';
 import { r2Service } from '../services/r2.js';
 import { transcriptionService } from '../services/transcription.js';
 import { llmService } from '../services/llm.js';
-import { pdfService } from '../services/pdf.js';
+
 import { documentService } from '../services/document.js';
+import { enhancedDocumentService } from '../services/enhancedDocument.js';
 import { processAudioFile, cleanupTempDir } from '../services/audio.js';
 import type { TranscriptionListResponse, TranscriptionDetailResponse, TranscribeResponse, Quiz, FlashcardDeck } from '@lecture/shared';
 
@@ -208,16 +209,6 @@ async function processFromRawText(
     console.log(`Structuring completed for ${id}, language: ${detectedLanguage}`);
 
     if (structuredText) {
-      // Generate PDF
-      try {
-        console.log(`Starting background PDF generation for ${id}`);
-        const pdfResult = await pdfService.generateAndUpload(id, structuredText, title, 'structured');
-        await d1Service.updatePdfInfo(id, pdfResult.pdfKey);
-        console.log(`PDF generated and saved for ${id}: ${pdfResult.pdfKey}`);
-      } catch (pdfError) {
-        console.error(`Background PDF generation failed for ${id}:`, pdfError);
-      }
-
       // Generate quiz and flashcards
       await generateStudyMaterials(id, structuredText, title, detectedLanguage);
     }
@@ -246,22 +237,70 @@ async function processDocumentTranscription(
 
     await d1Service.updateTranscriptionStatus(id, 'processing', 0.05);
 
-    // Download document from R2
-    const buffer = await r2Service.getFile(sourceKey);
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
+    let rawText = '';
+    let finalSourceType = sourceType;
 
-    // Extract text from document
-    const rawText = await documentService.extractText(
-      buffer as Buffer,
-      sourceType,
-      mimeType
-    );
+    // Check if it's a batch upload (JSON array in sourceKey)
+    if (sourceKey.startsWith('[') && sourceKey.endsWith(']')) {
+      try {
+        const files = JSON.parse(sourceKey) as Array<{ key: string, originalName: string, sourceType: any }>;
+        console.log(`Processing batch of ${files.length} files for ${id}`);
+        
+        const textParts: string[] = [];
+        const progressPerFile = 0.70 / files.length;
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const fileProgressStart = 0.15 + (i * progressPerFile);
+          
+          await d1Service.updateTranscriptionStatus(id, 'processing', fileProgressStart);
+          
+          const fileBuffer = await r2Service.getFile(file.key);
+          const result = await enhancedDocumentService.processDocument(
+            fileBuffer as Buffer,
+            file.sourceType,
+            null,
+            async (p) => {
+              const currentProgress = fileProgressStart + (p.progress * progressPerFile);
+              await d1Service.updateTranscriptionStatus(id, 'processing', currentProgress);
+            }
+          );
+          
+          textParts.push(`--- Source File: ${file.originalName} ---\n\n${result.text}`);
+        }
+        
+        rawText = textParts.join('\n\n' + '='.repeat(40) + '\n\n');
+        finalSourceType = 'pdf'; // Set to pdf for consistent processing
+      } catch (parseError) {
+        console.warn('Failed to parse sourceKey as batch, treating as single file');
+        // Fallback to single file logic below
+      }
+    }
+
+    if (!rawText) {
+      // Single file processing (original logic)
+      const buffer = await r2Service.getFile(sourceKey);
+      await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
+
+      const result = await enhancedDocumentService.processDocument(
+        buffer as Buffer,
+        sourceType as any,
+        mimeType,
+        async (p) => {
+          const progressRange = 0.70;
+          const currentProgress = 0.15 + p.progress * progressRange;
+          await d1Service.updateTranscriptionStatus(id, 'processing', currentProgress);
+        }
+      );
+      rawText = result.text;
+    }
 
     console.log(`Text extracted from ${sourceType}, length: ${rawText.length} chars`);
     await d1Service.updateTranscriptionStatus(id, 'processing', 0.85);
 
     // Process from raw text onwards (reuse common pipeline)
-    await processFromRawText(id, rawText, title, `document/${sourceType}`, null);
+    const infoModel = `document/${finalSourceType}${rawText.includes('--- Source File:') ? '-batch' : ''}`;
+    await processFromRawText(id, rawText, title, infoModel, null);
 
   } catch (error) {
     console.error(`Document processing failed for ${id}:`, error);
@@ -368,85 +407,7 @@ async function processTranscription(id: string, userId: string, audioUrl: string
   }
 }
 
-// POST /api/transcription/:id/pdf - Generate PDF for transcription
-router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userId = req.userId!;
-    const { id } = req.params;
-    const { type = 'structured', regenerate = false } = req.body as { 
-      type?: 'structured' | 'raw';
-      regenerate?: boolean;
-    };
 
-    // Get the transcription
-    const transcription = await d1Service.getTranscription(id, userId);
-
-    if (!transcription) {
-      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
-      return;
-    }
-
-    if (transcription.status !== 'completed') {
-      res.status(400).json({ error: 'Bad Request', message: 'Transcription is not completed yet' });
-      return;
-    }
-
-    // For structured type, check if we have a cached PDF
-    if (type === 'structured' && transcription.pdfKey && !regenerate) {
-      try {
-        // Get a fresh signed URL for the existing PDF (valid for 24 hours)
-        const pdfUrl = await r2Service.getSignedUrl(transcription.pdfKey, 86400);
-        console.log(`Returning cached PDF for ${id}: ${transcription.pdfKey}`);
-        res.json({
-          pdfUrl,
-          message: 'PDF retrieved from cache',
-          cached: true,
-          generatedAt: transcription.pdfGeneratedAt,
-        });
-        return;
-      } catch (cacheError) {
-        // If cached PDF retrieval fails, regenerate
-        console.warn(`Failed to retrieve cached PDF for ${id}, regenerating:`, cacheError);
-      }
-    }
-
-    // Determine which content to use
-    let content: string;
-    if (type === 'structured' && transcription.structuredText) {
-      content = transcription.structuredText;
-    } else if (transcription.transcriptionText) {
-      content = transcription.transcriptionText;
-    } else {
-      res.status(400).json({ error: 'Bad Request', message: 'No content available for PDF generation' });
-      return;
-    }
-
-    // Generate and upload PDF
-    const result = await pdfService.generateAndUpload(
-      id,
-      content,
-      transcription.title,
-      type
-    );
-
-    // Update the transcription with new PDF info for structured type
-    if (type === 'structured') {
-      await d1Service.updatePdfInfo(id, result.pdfKey);
-    }
-
-    res.json({
-      pdfUrl: result.pdfUrl,
-      message: regenerate ? 'PDF regenerated successfully' : 'PDF generated successfully',
-      cached: false,
-    });
-  } catch (error) {
-    console.error('Generate PDF error:', error);
-    res.status(500).json({
-      error: 'Failed to generate PDF',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
 
 // PATCH /api/transcription/:id - Update transcription metadata (title, isPublic, folderId, or tagIds)
 router.patch('/transcription/:id', async (req: Request, res: Response): Promise<void> => {
@@ -550,14 +511,7 @@ router.delete('/transcription/:id', async (req: Request, res: Response): Promise
       }
     }
 
-    // Delete PDF from R2 if exists
-    if (transcription.pdfKey) {
-      try {
-        await r2Service.deleteFile(transcription.pdfKey);
-      } catch (err) {
-        console.warn(`Failed to delete PDF file: ${transcription.pdfKey}`, err);
-      }
-    }
+    
 
     // Delete from D1
     await d1Service.deleteTranscription(id, userId);

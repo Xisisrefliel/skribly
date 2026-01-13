@@ -84,10 +84,10 @@ export function TagFilter({ selectedTagIds, onTagToggle }: TagFilterProps) {
                 )}
                 style={{
                   '--tag-color': tag.color,
-                  backgroundColor: isSelected ? tag.color : `${tag.color}15`,
+                  backgroundColor: isSelected ? tag.color : `${tag.color}18`,
                   color: isSelected ? '#ffffff' : tag.color,
-                  borderColor: isSelected ? 'transparent' : `${tag.color}30`,
-                  boxShadow: isSelected ? `0 2px 8px -2px ${tag.color}50, inset 0 1px 1px rgba(255,255,255,0.2)` : 'none',
+                  borderColor: isSelected ? 'transparent' : `${tag.color}35`,
+                  boxShadow: isSelected ? `0 2px 8px -2px ${tag.color}60, inset 0 1px 1px rgba(255,255,255,0.25)` : 'none',
                 } as React.CSSProperties}
               >
                 {tag.name}
@@ -97,7 +97,7 @@ export function TagFilter({ selectedTagIds, onTagToggle }: TagFilterProps) {
         )}
       </div>
       {isCreating ? (
-        <div className="flex items-center gap-2 neu-floating-card py-1.5! px-3! animate-scale-in">
+        <div className="flex items-center gap-2 neu-floating-card !py-1.5 !px-3 animate-scale-in">
           <Input
             value={newTagName}
             onChange={(e) => setNewTagName(e.target.value)}
@@ -119,10 +119,10 @@ export function TagFilter({ selectedTagIds, onTagToggle }: TagFilterProps) {
                 key={color}
                 onClick={() => setNewTagColor(color)}
                 className={cn(
-                  "h-4 w-4 rounded-full border-2 transition-all",
+                  "h-4 w-4 rounded-full border-2 transition-all duration-200",
                   newTagColor === color
                     ? "border-foreground scale-110 shadow-sm"
-                    : "border-transparent hover:scale-105"
+                    : "border-transparent hover:scale-110"
                 )}
                 style={{ backgroundColor: color }}
               />

@@ -50,6 +50,8 @@ app.use(cors({
     'http://localhost:5173',
     'http://localhost:3000',
     'https://lecture-web.pages.dev',
+    'https://notism.one',
+    'https://www.notism.one',
     'https://lecture-transcription-api.fly.dev',
   ],
   credentials: true,
@@ -72,7 +74,7 @@ app.get('/health', (_req, res) => {
 
 // Root redirect to frontend
 app.get('/', (_req, res) => {
-  res.redirect('https://lecture-web.pages.dev');
+  res.redirect('https://notism.one');
 });
 
 // Initialize database schema endpoint
