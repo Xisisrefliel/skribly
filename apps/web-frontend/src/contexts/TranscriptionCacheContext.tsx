@@ -20,12 +20,18 @@ interface TranscriptionCacheContextType {
   isLoadingTags: boolean;
   fetchTags: () => Promise<Tag[]>;
   refreshTags: () => Promise<Tag[]>;
+  addTagOptimistic: (tag: Tag) => void;
+  updateTagInCache: (id: string, updates: Partial<Tag>) => void;
+  removeTagFromCache: (id: string) => void;
   
   // Folders
   folders: Folder[];
   isLoadingFolders: boolean;
   fetchFolders: () => Promise<Folder[]>;
   refreshFolders: () => Promise<Folder[]>;
+  addFolderOptimistic: (folder: Folder) => void;
+  updateFolderInCache: (id: string, updates: Partial<Folder>) => void;
+  removeFolderFromCache: (id: string) => void;
   
   // Cache management
   invalidateCache: () => void;
@@ -195,6 +201,32 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     });
   }, []);
 
+  // Optimistic updates for tags
+  const addTagOptimistic = useCallback((tag: Tag) => {
+    setTags(prev => [...prev, tag]);
+  }, []);
+
+  const updateTagInCache = useCallback((id: string, updates: Partial<Tag>) => {
+    setTags(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  }, []);
+
+  const removeTagFromCache = useCallback((id: string) => {
+    setTags(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Optimistic updates for folders
+  const addFolderOptimistic = useCallback((folder: Folder) => {
+    setFolders(prev => [...prev, folder]);
+  }, []);
+
+  const updateFolderInCache = useCallback((id: string, updates: Partial<Folder>) => {
+    setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+  }, []);
+
+  const removeFolderFromCache = useCallback((id: string) => {
+    setFolders(prev => prev.filter(f => f.id !== id));
+  }, []);
+
   return (
     <TranscriptionCacheContext.Provider
       value={{
@@ -206,10 +238,16 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
         isLoadingTags,
         fetchTags,
         refreshTags,
+        addTagOptimistic,
+        updateTagInCache,
+        removeTagFromCache,
         folders,
         isLoadingFolders,
         fetchFolders,
         refreshFolders,
+        addFolderOptimistic,
+        updateFolderInCache,
+        removeFolderFromCache,
         invalidateCache,
         invalidateTranscriptions,
         updateTranscriptionInCache,

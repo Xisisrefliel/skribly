@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, FolderIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderIcon, Loader2, Check, X as XIcon } from 'lucide-react';
 import type { Folder as FolderType } from '@lecture/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -26,9 +26,21 @@ const PRESET_COLORS = [
 ];
 
 export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = false }: FolderSidebarProps) {
-  const { folders, isLoadingFolders, fetchFolders, refreshFolders } = useTranscriptionCache();
+  const { 
+    folders, 
+    isLoadingFolders, 
+    fetchFolders, 
+    refreshFolders,
+    addFolderOptimistic,
+    updateFolderInCache,
+    removeFolderFromCache,
+  } = useTranscriptionCache();
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingLoading, setIsCreatingLoading] = useState(false);
+  const [creatingError, setCreatingError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isUpdatingId, setIsUpdatingId] = useState<string | null>(null);
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState(PRESET_COLORS[0]);
   const [editFolderName, setEditFolderName] = useState('');
@@ -40,33 +52,77 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
+    
+    const tempId = `temp-${Date.now()}`;
+    const optimisticFolder: FolderType = {
+      id: tempId,
+      name: newFolderName.trim(),
+      color: newFolderColor,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setIsCreatingLoading(true);
+    setCreatingError(null);
+    
+    // Optimistically add the folder
+    addFolderOptimistic(optimisticFolder);
+    setIsCreating(false);
+    setNewFolderName('');
+    setNewFolderColor(PRESET_COLORS[0]);
 
     try {
-      await api.createFolder(newFolderName.trim(), newFolderColor);
-      setNewFolderName('');
-      setNewFolderColor(PRESET_COLORS[0]);
-      setIsCreating(false);
-      // Refresh folders from context cache
-      await refreshFolders();
+      const createdFolder = await api.createFolder(newFolderName.trim(), newFolderColor);
+      // Replace optimistic folder with real one
+      removeFolderFromCache(tempId);
+      addFolderOptimistic(createdFolder);
     } catch (error) {
-      console.error('Failed to create folder:', error);
+      // Remove optimistic folder on error
+      removeFolderFromCache(tempId);
+      setCreatingError(error instanceof Error ? error.message : 'Failed to create folder');
+      setIsCreating(true);
+      setNewFolderName(newFolderName.trim());
+      setNewFolderColor(newFolderColor);
+      // Refresh to get accurate state
+      await refreshFolders();
+    } finally {
+      setIsCreatingLoading(false);
     }
   };
 
   const handleUpdateFolder = async (id: string) => {
     if (!editFolderName.trim()) return;
 
+    const folder = folders.find(f => f.id === id);
+    if (!folder) return;
+
+    setIsUpdatingId(id);
+    
+    // Optimistically update
+    updateFolderInCache(id, {
+      name: editFolderName.trim(),
+      color: editFolderColor,
+    });
+
     try {
-      await api.updateFolder(id, {
+      const updatedFolder = await api.updateFolder(id, {
         name: editFolderName.trim(),
         color: editFolderColor,
       });
+      // Update with server response
+      updateFolderInCache(id, updatedFolder);
       setEditingId(null);
       setEditFolderName('');
-      // Refresh folders from context cache
-      await refreshFolders();
     } catch (error) {
-      console.error('Failed to update folder:', error);
+      // Revert on error
+      updateFolderInCache(id, folder);
+      await refreshFolders();
+      // Keep edit mode open and show error
+      const errorMsg = error instanceof Error ? error.message : 'Failed to update folder';
+      // You could add a toast notification here instead
+      console.error('Failed to update folder:', errorMsg);
+    } finally {
+      setIsUpdatingId(null);
     }
   };
 
@@ -75,15 +131,33 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
       return;
     }
 
+    setIsDeletingId(id);
+    
+    // Optimistically remove
+    const folder = folders.find(f => f.id === id);
+    removeFolderFromCache(id);
+    
+    if (selectedFolderId === id) {
+      onFolderSelect(null);
+    }
+
     try {
       await api.deleteFolder(id);
-      if (selectedFolderId === id) {
-        onFolderSelect(null);
-      }
-      // Refresh folders from context cache
-      await refreshFolders();
     } catch (error) {
-      console.error('Failed to delete folder:', error);
+      // Revert on error
+      if (folder) {
+        addFolderOptimistic(folder);
+      }
+      await refreshFolders();
+      const errorMsg = error instanceof Error ? error.message : 'Failed to delete folder';
+      // You could add a toast notification here instead
+      console.error('Failed to delete folder:', errorMsg);
+      // Show a more user-friendly error
+      if (confirm(`${errorMsg}\n\nWould you like to try again?`)) {
+        handleDeleteFolder(id);
+      }
+    } finally {
+      setIsDeletingId(null);
     }
   };
 
@@ -154,114 +228,165 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
             No folders yet
           </div>
         ) : (
-          folders.map((folder) => (
-            <div key={folder.id} className="group relative">
-              {editingId === folder.id ? (
-                <div className="space-y-2 p-2.5 bg-muted/40 rounded-xl border border-border/50">
-                  <Input
-                    value={editFolderName}
-                    onChange={(e) => setEditFolderName(e.target.value)}
-                    placeholder="Folder name"
-                    className="h-8 text-sm"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleUpdateFolder(folder.id);
-                      } else if (e.key === 'Escape') {
-                        cancelEdit();
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <div className="flex gap-1.5 flex-wrap">
-                    {PRESET_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => setEditFolderColor(color)}
-                        className={cn(
-                          "h-5 w-5 rounded-full border-2 transition-all duration-200",
-                          editFolderColor === color
-                            ? "border-foreground scale-110 shadow-md"
-                            : "border-transparent hover:scale-110"
-                        )}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex gap-1.5">
-                    <Button
-                      size="sm"
-                      onClick={() => handleUpdateFolder(folder.id)}
-                      className="h-7 flex-1 text-xs neu-button-success"
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={cancelEdit}
-                      className="h-7 flex-1 text-xs neu-button"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center group/item">
-                  <button
-                    onClick={() => onFolderSelect(folder.id)}
-                    className={cn(
-                      "flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-200 text-left",
-                      selectedFolderId === folder.id
-                        ? "neu-sidebar-item-active font-medium"
-                        : "neu-sidebar-item text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <div
-                      className="h-3 w-3 rounded-full shadow-sm flex-shrink-0"
-                      style={{ backgroundColor: folder.color }}
+          folders.map((folder) => {
+            const isUpdating = isUpdatingId === folder.id;
+            const isDeleting = isDeletingId === folder.id;
+            const isTemp = folder.id.startsWith('temp-');
+            
+            return (
+              <div 
+                key={folder.id} 
+                className={cn(
+                  "group relative transition-all duration-200",
+                  isDeleting && "opacity-50 pointer-events-none",
+                  isTemp && "opacity-70"
+                )}
+              >
+                {editingId === folder.id ? (
+                  <div className="space-y-2 p-2.5 bg-muted/40 rounded-xl border border-border/50">
+                    <Input
+                      value={editFolderName}
+                      onChange={(e) => setEditFolderName(e.target.value)}
+                      placeholder="Folder name"
+                      className="h-8 text-sm"
+                      disabled={isUpdating}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isUpdating) {
+                          handleUpdateFolder(folder.id);
+                        } else if (e.key === 'Escape') {
+                          cancelEdit();
+                        }
+                      }}
+                      autoFocus
                     />
-                    <span className="truncate">{folder.name}</span>
-                  </button>
-                  <div className={cn(
-                    "absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-0.5 transition-opacity duration-200",
-                    selectedFolderId === folder.id ? "opacity-100" : "opacity-0 group-hover/item:opacity-100"
-                  )}>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={(e) => { e.stopPropagation(); startEdit(folder); }}
-                      className="h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
-                      className="h-6 w-6 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {PRESET_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => setEditFolderColor(color)}
+                          disabled={isUpdating}
+                          className={cn(
+                            "h-5 w-5 rounded-full border-2 transition-all duration-200",
+                            editFolderColor === color
+                              ? "border-foreground scale-110 shadow-md"
+                              : "border-transparent hover:scale-110",
+                            isUpdating && "opacity-50 cursor-not-allowed"
+                          )}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        onClick={() => handleUpdateFolder(folder.id)}
+                        disabled={isUpdating || !editFolderName.trim()}
+                        className="h-7 flex-1 text-xs neu-button-success"
+                      >
+                        {isUpdating ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="h-3 w-3 mr-1.5" />
+                            Save
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={cancelEdit}
+                        disabled={isUpdating}
+                        className="h-7 flex-1 text-xs neu-button"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))
+                ) : (
+                  <div className="flex items-center group/item">
+                    <button
+                      onClick={() => !isDeleting && onFolderSelect(folder.id)}
+                      disabled={isDeleting}
+                      className={cn(
+                        "flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-200 text-left",
+                        selectedFolderId === folder.id
+                          ? "neu-sidebar-item-active font-medium"
+                          : "neu-sidebar-item text-muted-foreground hover:text-foreground",
+                        isDeleting && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      {isUpdating && (
+                        <Loader2 className="h-3 w-3 mr-1.5 animate-spin text-muted-foreground" />
+                      )}
+                      <div
+                        className="h-3 w-3 rounded-full shadow-sm flex-shrink-0"
+                        style={{ backgroundColor: folder.color }}
+                      />
+                      <span className="truncate">{folder.name}</span>
+                      {isTemp && (
+                        <span className="text-[10px] text-muted-foreground/60 ml-auto">Creating...</span>
+                      )}
+                    </button>
+                    {!isDeleting && (
+                      <div className={cn(
+                        "absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-0.5 transition-opacity duration-200",
+                        selectedFolderId === folder.id ? "opacity-100" : "opacity-0 group-hover/item:opacity-100"
+                      )}>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={(e) => { e.stopPropagation(); startEdit(folder); }}
+                          disabled={isUpdating}
+                          className="h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                          disabled={isUpdating}
+                          className="h-6 w-6 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
 
         {isCreating && (
           <div className="space-y-2 p-2.5 bg-muted/40 rounded-xl border border-border/50 animate-scale-in">
+            {creatingError && (
+              <div className="text-xs text-status-error bg-status-error-soft px-2 py-1 rounded flex items-center gap-1.5">
+                <XIcon className="h-3 w-3" />
+                {creatingError}
+              </div>
+            )}
             <Input
               value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
+              onChange={(e) => {
+                setNewFolderName(e.target.value);
+                setCreatingError(null);
+              }}
               placeholder="Folder name"
               className="h-8 text-sm"
+              disabled={isCreatingLoading}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !isCreatingLoading) {
                   handleCreateFolder();
                 } else if (e.key === 'Escape') {
                   setIsCreating(false);
                   setNewFolderName('');
+                  setCreatingError(null);
                 }
               }}
               autoFocus
@@ -271,11 +396,13 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
                 <button
                   key={color}
                   onClick={() => setNewFolderColor(color)}
+                  disabled={isCreatingLoading}
                   className={cn(
                     "h-5 w-5 rounded-full border-2 transition-all duration-200",
                     newFolderColor === color
                       ? "border-foreground scale-110 shadow-md"
-                      : "border-transparent hover:scale-110"
+                      : "border-transparent hover:scale-110",
+                    isCreatingLoading && "opacity-50 cursor-not-allowed"
                   )}
                   style={{ backgroundColor: color }}
                 />
@@ -285,9 +412,17 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
               <Button
                 size="sm"
                 onClick={handleCreateFolder}
+                disabled={isCreatingLoading || !newFolderName.trim()}
                 className="h-7 flex-1 text-xs neu-button-success"
               >
-                Create
+                {isCreatingLoading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create'
+                )}
               </Button>
               <Button
                 size="sm"
@@ -295,7 +430,9 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
                 onClick={() => {
                   setIsCreating(false);
                   setNewFolderName('');
+                  setCreatingError(null);
                 }}
+                disabled={isCreatingLoading}
                 className="h-7 flex-1 text-xs neu-button"
               >
                 Cancel
