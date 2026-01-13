@@ -29,31 +29,75 @@ interface ApiError {
   message: string;
 }
 
+type TokenGetter = () => Promise<string | null>;
+
 class ApiClient {
+  private getToken: TokenGetter | null = null;
+  private tokenGetterPromise: Promise<void> | null = null;
+  private resolveTokenGetter: (() => void) | null = null;
+
+  constructor() {
+    // Create a promise that resolves when setTokenGetter is called
+    this.tokenGetterPromise = new Promise((resolve) => {
+      this.resolveTokenGetter = resolve;
+    });
+  }
+
+  setTokenGetter(getter: TokenGetter) {
+    this.getToken = getter;
+    // Resolve the promise so any waiting requests can proceed
+    if (this.resolveTokenGetter) {
+      this.resolveTokenGetter();
+      this.resolveTokenGetter = null;
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // Try Bearer token first (for cross-origin), fall back to cookies
-    const token = localStorage.getItem('lecture-session-token');
+    // Wait for the token getter to be set (with a timeout)
+    if (!this.getToken && this.tokenGetterPromise) {
+      // Wait up to 5 seconds for the token getter to be set
+      await Promise.race([
+        this.tokenGetterPromise,
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+    }
+
+    const token = this.getToken ? await this.getToken() : null;
+
+    if (!token && import.meta.env.DEV) {
+      console.warn('[API] No token available for request to:', endpoint);
+    }
 
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
     
-    // Only add Authorization header if we have a valid token
-    // Otherwise, let the cookie-based auth handle it
-    if (token && token.length > 0) {
+    // Always include Authorization header if token is available
+    // Clerk Express SDK expects Bearer tokens in Authorization header
+    if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      credentials: 'include',
+      // Don't use credentials: 'include' for cross-origin requests
+      // Safari blocks third-party cookies, and we use Bearer tokens anyway
       headers,
     });
 
     if (!response.ok) {
+      // If we get a 401, it means authentication failed
+      if (response.status === 401) {
+        const error: ApiError = await response.json().catch(() => ({
+          error: 'Authentication required',
+          message: 'Please sign in to continue',
+        }));
+        throw new Error(error.message || error.error);
+      }
+      
       const error: ApiError = await response.json().catch(() => ({
         error: 'Request failed',
         message: response.statusText,

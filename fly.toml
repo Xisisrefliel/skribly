@@ -13,6 +13,9 @@ primary_region = 'ams'
   CHUNK_DURATION_MINUTES = '30'
   NODE_ENV = 'production'
   PORT = '3000'
+  # CLERK_PUBLISHABLE_KEY must be set via: fly secrets set CLERK_PUBLISHABLE_KEY=pk_...
+  # CLERK_SECRET_KEY must be set via: fly secrets set CLERK_SECRET_KEY=sk_...
+  # Both keys must match the same Clerk instance/environment (test or live)
 
 [http_service]
   internal_port = 3000

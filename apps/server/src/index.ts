@@ -1,6 +1,9 @@
+// Load environment variables (for production, these should be set by the deployment platform)
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
-import { clerkMiddleware, requireAuth as authMiddleware } from './middleware/authMiddleware.js';
+import { clerkAuthMiddleware, requireAuth as authMiddleware } from './middleware/authMiddleware.js';
 import { uploadRouter } from './routes/upload.js';
 import { transcriptionRouter } from './routes/transcription.js';
 import { studyRouter } from './routes/study.js';
@@ -12,6 +15,35 @@ import { d1Service } from './services/d1.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Validate required Clerk environment variables
+const isProduction = process.env.NODE_ENV === 'production';
+const missingVars: string[] = [];
+
+if (!process.env.CLERK_SECRET_KEY) {
+  missingVars.push('CLERK_SECRET_KEY');
+}
+
+if (!process.env.CLERK_PUBLISHABLE_KEY) {
+  missingVars.push('CLERK_PUBLISHABLE_KEY');
+}
+
+if (missingVars.length > 0) {
+  const errorMsg = `ERROR: Missing required Clerk environment variables: ${missingVars.join(', ')}`;
+  console.error(errorMsg);
+  console.error('Authentication will not work without these variables.');
+  console.error('For Fly.io deployment, set them via:');
+  console.error('  fly secrets set CLERK_SECRET_KEY=sk_...');
+  console.error('  fly secrets set CLERK_PUBLISHABLE_KEY=pk_...');
+  console.error('Both keys must match the same Clerk instance/environment (test or live).');
+  
+  if (isProduction) {
+    console.error('FATAL: Cannot start server in production without Clerk credentials.');
+    process.exit(1);
+  } else {
+    console.warn('WARNING: Continuing in development mode, but authentication will fail.');
+  }
+}
+
 // Middleware
 app.use(cors({
   origin: [
@@ -21,11 +53,14 @@ app.use(cors({
     'https://lecture-transcription-api.fly.dev',
   ],
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 app.use(express.json());
 
 // Clerk middleware - must be applied before routes
-app.use(clerkMiddleware());
+// This middleware will automatically handle Bearer tokens from Authorization header
+app.use(clerkAuthMiddleware);
 
 // Public routes
 app.use('/api/public', publicRouter);

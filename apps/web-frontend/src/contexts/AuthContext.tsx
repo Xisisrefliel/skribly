@@ -1,5 +1,6 @@
 import { useUser, useAuth as useClerkAuth } from '@clerk/clerk-react';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { api } from '@/lib/api';
 
 interface User {
   id: string;
@@ -22,6 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { user: clerkUser, isLoaded, isSignedIn } = useUser();
   const { signOut: clerkSignOut, getToken } = useClerkAuth();
+
+  // Set the token getter for the API client
+  // This runs on every render to ensure the latest getToken is used
+  useEffect(() => {
+    api.setTokenGetter(getToken);
+  }, [getToken]);
 
   const user: User | null = clerkUser ? {
     id: clerkUser.id,
