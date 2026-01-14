@@ -16,33 +16,58 @@ const groq = new Groq({
  */
 function detectLanguage(text: string): string {
   const lowerText = text.toLowerCase();
-  
+
   // Turkish-specific characters
   const turkishChars = /[şğıüöçŞĞİÜÖÇ]/g;
   const turkishCharCount = (text.match(turkishChars) || []).length;
-  
+
   // Common Turkish words (including partial/truncated forms that survive transcription errors)
   const turkishWords = /\b(bir|ve|bu|için|ile|de|da|ne|ki|var|yok|olan|gibi|daha|çok|kadar|sonra|önce|ama|fakat|ancak|değil|mi|mı|mu|mü|evet|hayır|nasıl|neden|peki|şey|biz|siz|onlar|ben|sen|olarak)\b/gi;
   const turkishWordCount = (lowerText.match(turkishWords) || []).length;
-  
+
+  // German-specific characters
+  const germanChars = /[äöüßÄÖÜ]/g;
+  const germanCharCount = (text.match(germanChars) || []).length;
+
+  // Common German words
+  const germanWords = /\b(der|die|das|und|ist|sind|nicht|ein|eine|mit|auf|für|von|zu|im|am|dem|den|des|dass|wie|was|wir|ihr|sie|er|es|auch|bei|als|aus|über|nach|vor|wird|werden)\b/gi;
+  const germanWordCount = (lowerText.match(germanWords) || []).length;
+
   // Common English words
   const englishWords = /\b(the|a|an|is|are|was|were|be|been|being|have|has|had|do|does|did|will|would|could|should|may|might|must|shall|can|need|this|that|these|those|and|but|or|if|then|else|when|where|why|how|what|which|who|whom|with|from|into|through|during|before|after|above|below|between|under|again|further|once|here|there|all|each|few|more|most|other|some|such|no|not|only|own|same|so|than|too|very)\b/gi;
   const englishWordCount = (lowerText.match(englishWords) || []).length;
-  
+
   // Calculate scores (weighted)
   const turkishScore = turkishCharCount * 3 + turkishWordCount * 2;
+  const germanScore = germanCharCount * 3 + germanWordCount * 2;
   const englishScore = englishWordCount * 2;
-  
-  // Determine language
-  if (turkishScore > englishScore && (turkishCharCount > 5 || turkishWordCount > 10)) {
-    return 'Turkish';
-  } else if (englishScore > turkishScore) {
-    return 'English';
-  } else if (turkishScore > 0) {
-    // Default to Turkish if any Turkish indicators present (for mixed/unclear cases)
+
+  const maxScore = Math.max(turkishScore, germanScore, englishScore);
+
+  if (maxScore === 0) {
+    return 'Unknown';
+  }
+
+  if (maxScore === turkishScore && (turkishCharCount > 3 || turkishWordCount > 6)) {
     return 'Turkish';
   }
-  
+
+  if (maxScore === germanScore && (germanCharCount > 1 || germanWordCount > 5)) {
+    return 'German';
+  }
+
+  if (maxScore === englishScore) {
+    return 'English';
+  }
+
+  if (germanScore > 0) {
+    return 'German';
+  }
+
+  if (turkishScore > 0) {
+    return 'Turkish';
+  }
+
   return 'Unknown';
 }
 
@@ -150,6 +175,19 @@ async function withRetry<T>(
   throw lastError;
 }
 
+const normalizeLanguage = (language?: string | null): string | null => {
+  if (!language) {
+    return null;
+  }
+
+  const trimmed = language.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'unknown') {
+    return null;
+  }
+
+  return trimmed;
+};
+
 export const llmService = {
   /**
    * Structure a raw transcription into organized notes using LLM
@@ -207,11 +245,14 @@ export const llmService = {
    * Generate quiz questions from lecture content
    */
   async generateQuiz(content: string, title: string, questionCount: number = 10, language: string = 'English'): Promise<QuizQuestion[]> {
-    console.log(`Generating ${questionCount} quiz questions for: ${title} (language: ${language})`);
+    const inferredLanguage = normalizeLanguage(detectLanguage(content));
+    const resolvedLanguage = inferredLanguage ?? normalizeLanguage(language);
+    const languageLabel = resolvedLanguage ?? 'the same language as the content';
+    console.log(`Generating ${questionCount} quiz questions for: ${title} (language: ${resolvedLanguage ?? 'auto'})`);
 
-    const languageInstruction = language && language !== 'Unknown' 
-      ? `CRITICAL: Generate ALL questions, options, and explanations in ${language}. The content is in ${language}, so the quiz must also be entirely in ${language}.`
-      : '';
+    const languageInstruction = resolvedLanguage
+      ? `CRITICAL: Generate ALL questions, options, and explanations in ${resolvedLanguage}. The content is in ${resolvedLanguage}, so the quiz must also be entirely in ${resolvedLanguage}.`
+      : 'CRITICAL: Generate all questions, options, and explanations in the same language as the content.';
 
     const prompt = `You are an expert educator creating a quiz to test understanding of lecture material.
 
@@ -226,7 +267,7 @@ Requirements:
 - Only one option should be correct
 - Provide a brief explanation for why the correct answer is right
 - Questions should cover the most important topics from the lecture
-- ALL text (questions, options, explanations) must be in ${language || 'the same language as the content'}
+- ALL text (questions, options, explanations) must be in ${languageLabel}
 
 Output ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
@@ -286,11 +327,14 @@ ${content.substring(0, 50000)}`;
    * Generate flashcards from lecture content
    */
   async generateFlashcards(content: string, title: string, cardCount: number = 20, language: string = 'English'): Promise<Flashcard[]> {
-    console.log(`Generating ${cardCount} flashcards for: ${title} (language: ${language})`);
+    const inferredLanguage = normalizeLanguage(detectLanguage(content));
+    const resolvedLanguage = inferredLanguage ?? normalizeLanguage(language);
+    const languageLabel = resolvedLanguage ?? 'the same language as the content';
+    console.log(`Generating ${cardCount} flashcards for: ${title} (language: ${resolvedLanguage ?? 'auto'})`);
 
-    const languageInstruction = language && language !== 'Unknown' 
-      ? `CRITICAL: Generate ALL flashcard content (front, back, category) in ${language}. The content is in ${language}, so the flashcards must also be entirely in ${language}.`
-      : '';
+    const languageInstruction = resolvedLanguage
+      ? `CRITICAL: Generate ALL flashcard content (front, back, category) in ${resolvedLanguage}. The content is in ${resolvedLanguage}, so the flashcards must also be entirely in ${resolvedLanguage}.`
+      : 'CRITICAL: Generate all flashcard content (front, back, category) in the same language as the content.';
 
     const prompt = `You are an expert educator creating flashcards to help students memorize key concepts from a lecture.
 
@@ -303,19 +347,19 @@ Requirements:
 - Front side should be a question or concept name
 - Back side should be a clear, concise answer or explanation
 - Include a mix of:
-  - Definitions (e.g., "What is X?" / "${language === 'Turkish' ? 'X nedir?' : 'What is X?'}")
-  - Concepts (e.g., "Explain the concept of X" / "${language === 'Turkish' ? 'X kavramını açıklayın' : 'Explain X'}")
+  - Definitions (e.g., "What is X?" / "${resolvedLanguage === 'Turkish' ? 'X nedir?' : 'What is X?'}")
+  - Concepts (e.g., "Explain the concept of X" / "${resolvedLanguage === 'Turkish' ? 'X kavramını açıklayın' : 'Explain X'}")
   - Key facts (e.g., "What are the main characteristics of X?")
   - Relationships (e.g., "How does X relate to Y?")
 - Optionally categorize cards by topic/section
-- ALL text must be in ${language || 'the same language as the content'}
+- ALL text must be in ${languageLabel}
 
 Output ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
   "cards": [
     {
-      "front": "Question in ${language || 'content language'}",
-      "back": "Answer in ${language || 'content language'}",
+      "front": "Question in ${languageLabel}",
+      "back": "Answer in ${languageLabel}",
       "category": "Optional topic/section name"
     }
   ]

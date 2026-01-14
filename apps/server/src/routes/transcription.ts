@@ -10,9 +10,47 @@ import { llmService } from '../services/llm.js';
 import { documentService } from '../services/document.js';
 import { enhancedDocumentService } from '../services/enhancedDocument.js';
 import { processAudioFile, cleanupTempDir } from '../services/audio.js';
-import type { TranscriptionListResponse, TranscriptionDetailResponse, TranscribeResponse, Quiz, FlashcardDeck } from '@lecture/shared';
+import type {
+  FlashcardDeck,
+  Quiz,
+  SourceDownloadResponse,
+  SourceType,
+  TranscribeResponse,
+  TranscriptionDetailResponse,
+  TranscriptionListResponse,
+} from '@lecture/shared';
 
 const router: RouterType = Router();
+
+const getSourceExtension = (sourceType: SourceType, mimeType?: string | null) => {
+  const mimeExtensionMap: Record<string, string> = {
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/wav': 'wav',
+    'video/mp4': 'mp4',
+    'application/pdf': 'pdf',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  };
+
+  if (mimeType && mimeExtensionMap[mimeType]) {
+    return mimeExtensionMap[mimeType];
+  }
+
+  if (sourceType === 'audio') {
+    return 'mp3';
+  }
+
+  if (sourceType === 'video') {
+    return 'mp4';
+  }
+
+  return sourceType;
+};
+
+const buildDefaultSourceName = (title: string, sourceType: SourceType, mimeType?: string | null) =>
+  `${title}.${getSourceExtension(sourceType, mimeType)}`;
 
 // GET /api/transcriptions - List all transcriptions for the user (with optional folder and tag filters)
 router.get('/transcriptions', async (req: Request, res: Response): Promise<void> => {
@@ -61,7 +99,62 @@ router.get('/transcription/:id', async (req: Request, res: Response): Promise<vo
   }
 });
 
+// GET /api/transcription/:id/source - Download original source file(s)
+router.get('/transcription/:id/source', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (!transcription.audioUrl) {
+      res.status(404).json({ error: 'Not Found', message: 'Source file not available' });
+      return;
+    }
+
+    const trimmedSource = transcription.audioUrl.trim();
+    if (trimmedSource.startsWith('[') && trimmedSource.endsWith(']')) {
+      try {
+        const parsedFiles = JSON.parse(trimmedSource) as Array<{ key: string; originalName?: string; sourceType?: SourceType }>;
+        const files = await Promise.all(parsedFiles.map(async (file) => {
+          const url = await r2Service.getSignedUrl(file.key, 86400);
+          return {
+            url,
+            originalName: file.originalName || buildDefaultSourceName(transcription.title, file.sourceType ?? transcription.sourceType, transcription.mimeType),
+            sourceType: (file.sourceType ?? transcription.sourceType) as SourceType,
+          };
+        }));
+
+        const response: SourceDownloadResponse = { files };
+        res.json(response);
+        return;
+      } catch (parseError) {
+        console.warn('Failed to parse source key as batch download:', parseError);
+      }
+    }
+
+    const url = await r2Service.getSignedUrl(transcription.audioUrl, 86400);
+    const originalName = transcription.originalFileName?.trim() || buildDefaultSourceName(transcription.title, transcription.sourceType, transcription.mimeType);
+    const response: SourceDownloadResponse = {
+      files: [{ url, originalName, sourceType: transcription.sourceType }],
+    };
+    res.json(response);
+  } catch (error) {
+    console.error('Download source error:', error);
+    res.status(500).json({
+      error: 'Failed to download source file',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // GET /api/transcription/:id/pdf - Download structured PDF
+
 router.get('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;

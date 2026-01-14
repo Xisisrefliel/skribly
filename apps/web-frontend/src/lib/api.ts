@@ -9,6 +9,8 @@ import type {
   QuizAttemptResponse,
   QuizAttemptsListResponse,
   SaveQuizAttemptRequest,
+  SourceDownloadResponse,
+  SourceFileDownload,
   Tag,
   TagListResponse,
   TranscribeResponse,
@@ -133,6 +135,12 @@ class ApiClient {
   async getTranscription(id: string): Promise<Transcription> {
     const response = await this.request<TranscriptionDetailResponse>(`/api/transcription/${id}`);
     return response.transcription;
+  }
+
+  async getSourceDownloadUrls(id: string, isPublic: boolean = false): Promise<SourceFileDownload[]> {
+    const endpoint = isPublic ? `/api/public/transcription/${id}/source` : `/api/transcription/${id}/source`;
+    const response = await this.request<SourceDownloadResponse>(endpoint);
+    return response.files;
   }
 
   async getPdfDownloadUrl(id: string): Promise<string> {

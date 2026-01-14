@@ -77,7 +77,7 @@ router.post('/transcription/:id/quiz', async (req: Request, res: Response): Prom
     await d1Service.deleteQuizByTranscriptionId(id);
 
     // Generate new quiz questions with language support
-    const language = transcription.detectedLanguage || 'English';
+    const language = transcription.detectedLanguage || 'Unknown';
     const questions = await llmService.generateQuiz(content, transcription.title, questionCount, language);
 
     const quiz: Quiz = {
@@ -178,7 +178,7 @@ router.post('/transcription/:id/flashcards', async (req: Request, res: Response)
     // await d1Service.deleteFlashcardDeckByTranscriptionId(id);
 
     // Generate new flashcards with language support
-    const language = transcription.detectedLanguage || 'English';
+    const language = transcription.detectedLanguage || 'Unknown';
     const cards = await llmService.generateFlashcards(content, transcription.title, cardCount, language);
 
     const deck: FlashcardDeck = {

@@ -54,6 +54,16 @@ export interface Transcription {
   updatedAt: string;             // ISO date string
 }
 
+export interface SourceFileDownload {
+  url: string;
+  originalName: string;
+  sourceType: SourceType;
+}
+
+export interface SourceDownloadResponse {
+  files: SourceFileDownload[];
+}
+
 // Quiz types
 export interface QuizQuestion {
   id: string;

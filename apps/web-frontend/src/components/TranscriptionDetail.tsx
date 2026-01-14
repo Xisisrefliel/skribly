@@ -229,25 +229,59 @@ export function TranscriptionDetail() {
 
   
 
+  const getSourceExtension = (current: Transcription) => {
+    const originalName = current.originalFileName?.trim();
+    if (originalName && originalName.includes('.')) {
+      const extension = originalName.split('.').pop();
+      if (extension) {
+        return extension;
+      }
+    }
+
+    const mimeType = current.mimeType ?? '';
+    const mimeExtensionMap: Record<string, string> = {
+      'audio/mpeg': 'mp3',
+      'audio/mp4': 'm4a',
+      'audio/wav': 'wav',
+      'video/mp4': 'mp4',
+      'application/pdf': 'pdf',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+      'application/vnd.ms-powerpoint': 'ppt',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    };
+
+    return (
+      mimeExtensionMap[mimeType] ??
+      (current.sourceType === 'audio'
+        ? 'mp3'
+        : current.sourceType === 'video'
+          ? 'mp4'
+          : current.sourceType)
+    );
+  };
+
   const handleDownloadSource = async () => {
-    if (!transcription?.audioUrl) return;
+    if (!id || !transcription?.audioUrl) return;
 
     setIsDownloadingSource(true);
     try {
-      const response = await fetch(transcription.audioUrl);
-      if (!response.ok) throw new Error('Failed to download source media');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${transcription.title}.${transcription.sourceType === 'video' ? 'mp4' : 'mp3'}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const files = await api.getSourceDownloadUrls(id, !isAuthenticated && transcription.isPublic);
+
+      if (files.length === 0) {
+        throw new Error('No source files available');
+      }
+
+      for (const file of files) {
+        const a = document.createElement('a');
+        const fallbackName = transcription.originalFileName?.trim() || `${transcription.title}.${getSourceExtension(transcription)}`;
+        a.href = file.url;
+        a.download = file.originalName?.trim() || fallbackName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download source media');
+      setError(err instanceof Error ? err.message : 'Failed to download source file');
     } finally {
       setIsDownloadingSource(false);
     }
@@ -518,6 +552,12 @@ export function TranscriptionDetail() {
 
   const isCompleted = transcription.status === 'completed';
   const content = transcription.structuredText || transcription.transcriptionText || '';
+  const SourceIcon =
+    transcription.sourceType === 'video'
+      ? Video
+      : transcription.sourceType === 'audio'
+        ? Music
+        : FileText;
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in-up">
@@ -774,11 +814,7 @@ export function TranscriptionDetail() {
             <Card className="!gap-3 p-4 neu-panel">
               <CardHeader className="p-0">
                 <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                  {transcription.sourceType === 'video' ? (
-                    <Video className="h-4 w-4" />
-                  ) : (
-                    <Music className="h-4 w-4" />
-                  )}
+                  <SourceIcon className="h-4 w-4" />
                   Source
                 </CardTitle>
               </CardHeader>
@@ -789,11 +825,7 @@ export function TranscriptionDetail() {
                     className="relative group w-full aspect-square bg-muted/40 border-2 border-dashed border-muted-foreground/20 rounded-xl flex items-center justify-center cursor-pointer hover:bg-muted/60 hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                     title="Download source media"
                   >
-                    {transcription.sourceType === 'video' ? (
-                      <Video className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
-                    ) : (
-                      <Music className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
-                    )}
+                    <SourceIcon className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
                     <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 bg-background/10 backdrop-blur-[2px] rounded-xl">
                       <div className="bg-card shadow-lg rounded-full p-4 mb-2 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-200">
                         {isDownloadingSource ? (
