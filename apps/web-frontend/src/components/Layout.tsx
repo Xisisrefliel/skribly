@@ -14,7 +14,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useBillingStatus } from '@/hooks/useBillingStatus';
 import { api } from '@/lib/api';
 import { SignInButton } from '@clerk/clerk-react';
-import { LogOut, Moon, Sun, Upload } from 'lucide-react';
+import { CreditCard, LogOut, Moon, Sun, Upload } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 
 const COOKIE_CONSENT_KEY = 'notism-cookie-consent';
@@ -40,7 +40,21 @@ function ThemeToggle() {
   );
 }
 
-function UserMenu() {
+interface UserMenuProps {
+  hasActivePlan: boolean;
+  isPortalLoading: boolean;
+  isCheckoutLoading: boolean;
+  onManageSubscription: () => void;
+  onUpgrade: () => void;
+}
+
+function UserMenu({
+  hasActivePlan,
+  isPortalLoading,
+  isCheckoutLoading,
+  onManageSubscription,
+  onUpgrade
+}: UserMenuProps) {
   const { user, signOut } = useAuth();
 
   if (!user) return null;
@@ -62,6 +76,26 @@ function UserMenu() {
             <p className="text-xs text-muted-foreground">{user.email}</p>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {hasActivePlan ? (
+          <DropdownMenuItem
+            onClick={onManageSubscription}
+            disabled={isPortalLoading}
+            className="cursor-pointer"
+          >
+            <CreditCard className="mr-2 h-4 w-4" />
+            {isPortalLoading ? 'Opening portal...' : 'Manage subscription'}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={onUpgrade}
+            disabled={isCheckoutLoading}
+            className="cursor-pointer"
+          >
+            <CreditCard className="mr-2 h-4 w-4" />
+            {isCheckoutLoading ? 'Opening checkout...' : 'Upgrade to Pro'}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={signOut} className="cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />
@@ -145,29 +179,10 @@ export function Layout() {
 
             {isAuthenticated ? (
               <>
-                {billingStatus?.isActive ? (
-                  <>
-                    <span className="hidden sm:inline-flex items-center rounded-full bg-status-success/20 px-3 py-1 text-xs font-semibold text-status-success">
-                      Pro
-                    </span>
-                    <Button
-                      size="sm"
-                      className="hidden sm:inline-flex neu-button"
-                      onClick={handleManageSubscription}
-                      disabled={isPortalLoading}
-                    >
-                      {isPortalLoading ? 'Opening portal...' : 'Manage'}
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="hidden sm:inline-flex neu-button-primary"
-                    onClick={handleUpgrade}
-                    disabled={isCheckoutLoading}
-                  >
-                    {isCheckoutLoading ? 'Opening checkout...' : 'Upgrade'}
-                  </Button>
+                {billingStatus?.isActive && (
+                  <span className="inline-flex items-center rounded-full bg-status-success/20 px-3 py-1 text-xs font-semibold text-status-success">
+                    Pro
+                  </span>
                 )}
                 <Link to="/upload" className="hidden sm:block">
                   <Button variant="outline" size="sm" className="neu-button">
@@ -180,7 +195,13 @@ export function Layout() {
                     <Upload className="h-4 w-4" />
                   </Button>
                 </Link>
-                <UserMenu />
+                <UserMenu
+                  hasActivePlan={billingStatus?.isActive ?? false}
+                  isPortalLoading={isPortalLoading}
+                  isCheckoutLoading={isCheckoutLoading}
+                  onManageSubscription={handleManageSubscription}
+                  onUpgrade={handleUpgrade}
+                />
               </>
             ) : (
               <SignInButton mode="modal">
