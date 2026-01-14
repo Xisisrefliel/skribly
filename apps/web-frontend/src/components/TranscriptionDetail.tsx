@@ -61,67 +61,99 @@ type StudyMode = 'none' | 'quiz' | 'flashcards';
 interface EditableTitleProps {
   value: string;
   onChange: (newTitle: string) => void;
-  isLoading?: boolean;
 }
 
-const EditableTitle = memo(function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
+const EditableTitle = memo(function EditableTitle({ value, onChange }: EditableTitleProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [displayValue, setDisplayValue] = useState(value);
+  const draftValueRef = useRef(displayValue);
+  const prevValueRef = useRef(value);
+  const titleRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    setEditValue(value);
+    if (value !== prevValueRef.current) {
+      setDisplayValue(value);
+      draftValueRef.current = value;
+      prevValueRef.current = value;
+    }
   }, [value]);
 
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (isEditing && titleRef.current) {
+      titleRef.current.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(titleRef.current);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
   }, [isEditing]);
 
   const handleSave = useCallback(() => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== value) {
-      onChange(trimmed);
-    } else {
-      setEditValue(value);
+    const nextValue = draftValueRef.current.trim();
+    if (!nextValue) {
+      if (titleRef.current) {
+        titleRef.current.textContent = displayValue;
+      }
+      draftValueRef.current = displayValue;
+      setIsEditing(false);
+      return;
+    }
+
+    setDisplayValue(nextValue);
+    draftValueRef.current = nextValue;
+    if (nextValue !== value) {
+      onChange(nextValue);
     }
     setIsEditing(false);
-  }, [editValue, value, onChange]);
+  }, [value, onChange, displayValue]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       handleSave();
     } else if (e.key === 'Escape') {
-      setEditValue(value);
+      e.preventDefault();
+      if (titleRef.current) {
+        titleRef.current.textContent = displayValue;
+      }
+      draftValueRef.current = displayValue;
       setIsEditing(false);
     }
-  }, [handleSave, value]);
+  }, [handleSave, displayValue]);
 
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={handleSave}
-        onKeyDown={handleKeyDown}
-        className="editable-title-input text-3xl font-bold tracking-tight bg-background border-2 border-primary/50 rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-        disabled={isLoading}
-      />
-    );
-  }
+  const handleStartEdit = useCallback(() => {
+    if (titleRef.current) {
+      titleRef.current.textContent = displayValue;
+    }
+    draftValueRef.current = displayValue;
+    setIsEditing(true);
+  }, [displayValue]);
 
   return (
-    <h1 
-      className="editable-title text-3xl font-bold tracking-tight cursor-text hover:text-primary/80 transition-colors bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent"
-      onClick={() => setIsEditing(true)}
+    <h1
+      className="editable-title text-3xl font-bold tracking-tight"
       title="Click to edit title"
+      onClick={handleStartEdit}
     >
-      {value}
-      {isLoading && <Loader2 className="inline-block ml-2 h-5 w-5 animate-spin text-primary" />}
+      <span
+        ref={titleRef}
+        contentEditable={isEditing}
+        suppressContentEditableWarning
+        onInput={(event) => {
+          draftValueRef.current = event.currentTarget.textContent ?? '';
+        }}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className={`inline-block cursor-text focus:outline-none transition-[background-color,box-shadow] duration-150 ${
+          isEditing
+            ? 'text-foreground bg-muted/40 shadow-inner rounded-md caret-primary px-2 py-1'
+            : 'hover:text-primary/80 bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent px-2 py-1'
+        }`}
+      >
+        {displayValue}
+      </span>
     </h1>
   );
 });
@@ -136,7 +168,6 @@ export function TranscriptionDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   
   const [showRaw, setShowRaw] = useState(false);
-  const [isSavingTitle, setIsSavingTitle] = useState(false);
   
   // Study features
   const [studyMode, setStudyMode] = useState<StudyMode>('none');
@@ -202,15 +233,11 @@ export function TranscriptionDetail() {
 
   const handleTitleChange = useCallback(async (newTitle: string) => {
     if (!id || !transcription) return;
-    
-    setIsSavingTitle(true);
     try {
       await api.updateTranscription(id, { title: newTitle });
       setTranscription(prev => prev ? { ...prev, title: newTitle } : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update title');
-    } finally {
-      setIsSavingTitle(false);
     }
   }, [id, transcription]);
 
@@ -590,7 +617,6 @@ export function TranscriptionDetail() {
                 <EditableTitle 
                   value={transcription.title} 
                   onChange={handleTitleChange}
-                  isLoading={isSavingTitle}
                 />
               ) : (
                 <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
