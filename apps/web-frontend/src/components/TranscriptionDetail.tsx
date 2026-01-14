@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import type { Transcription, Quiz, FlashcardDeck } from '@lecture/shared';
 import { 
@@ -34,7 +34,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 
-function StatusBadge({ status }: { status: TranscriptionStatus }) {
+const StatusBadge = memo(function StatusBadge({ status }: { status: TranscriptionStatus }) {
   const styles = getStatusStyles(status);
   
   const statusClass = {
@@ -54,7 +54,7 @@ function StatusBadge({ status }: { status: TranscriptionStatus }) {
   }
   
   return <Badge className={statusClass}>{styles.label}</Badge>;
-}
+});
 
 type StudyMode = 'none' | 'quiz' | 'flashcards';
 
@@ -64,7 +64,7 @@ interface EditableTitleProps {
   isLoading?: boolean;
 }
 
-function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
+const EditableTitle = memo(function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,7 +124,7 @@ function EditableTitle({ value, onChange, isLoading }: EditableTitleProps) {
       {isLoading && <Loader2 className="inline-block ml-2 h-5 w-5 animate-spin text-primary" />}
     </h1>
   );
-}
+});
 
 export function TranscriptionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -151,7 +151,7 @@ export function TranscriptionDetail() {
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [isDownloadingSource, setIsDownloadingSource] = useState(false);
 
-  const fetchTranscription = async () => {
+  const fetchTranscription = useCallback(async () => {
     if (!id) return;
     try {
       // Try authenticated route first
@@ -163,7 +163,7 @@ export function TranscriptionDetail() {
         try {
           const data = await api.getPublicTranscription(id);
           setTranscription(data);
-        } catch (publicErr) {
+        } catch {
           // Both failed, show error
           throw authErr;
         }
@@ -173,25 +173,31 @@ export function TranscriptionDetail() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id]);
+
+  const transcriptionStatus = transcription?.status;
 
   useEffect(() => {
     fetchTranscription();
+  }, [fetchTranscription]);
 
+  useEffect(() => {
     // Poll for updates if processing
+    if (
+      !transcriptionStatus ||
+      (transcriptionStatus !== 'processing' &&
+        transcriptionStatus !== 'structuring' &&
+        transcriptionStatus !== 'pending')
+    ) {
+      return;
+    }
+
     const interval = setInterval(() => {
-      if (
-        transcription &&
-        (transcription.status === 'processing' ||
-          transcription.status === 'structuring' ||
-          transcription.status === 'pending')
-      ) {
-        fetchTranscription();
-      }
+      fetchTranscription();
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [id, transcription?.status]);
+  }, [transcriptionStatus, fetchTranscription]);
 
   const handleTitleChange = useCallback(async (newTitle: string) => {
     if (!id || !transcription) return;
@@ -557,7 +563,7 @@ export function TranscriptionDetail() {
           </div>
 
           {/* Action bar - Enhanced styling */}
-          <div className="flex items-center justify-between py-5 px-4 bg-muted/40 rounded-xl border border-border/50 mb-8 backdrop-blur-sm">
+          <div className="flex items-center justify-between py-5 px-4 bg-muted/40 rounded-xl border border-border/50 mb-8">
             {/* Left side - Study actions */}
             <div className="flex items-center gap-1.5">
               {isCompleted && isAuthenticated && (
@@ -674,7 +680,7 @@ export function TranscriptionDetail() {
 
           {/* Progress (when processing) - Enhanced styling */}
           {isProcessing && (
-            <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent backdrop-blur-sm">
+            <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
               <CardContent className="pt-6">
                 <div className="space-y-4">
                   <div className="flex justify-between items-center text-sm">
@@ -718,7 +724,7 @@ export function TranscriptionDetail() {
 
               {/* Markdown content - Enhanced container */}
               {showRaw ? (
-                <div className="bg-gradient-to-br from-muted/40 to-muted/20 rounded-xl border border-border/50 p-6 backdrop-blur-sm">
+                <div className="bg-gradient-to-br from-muted/40 to-muted/20 rounded-xl border border-border/50 p-6">
                   <pre className="whitespace-pre-wrap text-sm overflow-x-auto font-mono leading-relaxed">
                     {transcription.transcriptionText || 'No raw transcription available'}
                   </pre>

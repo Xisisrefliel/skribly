@@ -200,12 +200,33 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* High-DPI display scaling - matches 150% browser zoom */
+    font-size: 24px;
+  }
+  @media (max-width: 1600px) {
+    html {
+      font-size: 20px;
+    }
+  }
+  @media (max-width: 1200px) {
+    html {
+      font-size: 17px;
+    }
+  }
+  @media (max-width: 800px) {
+    html {
+      font-size: 15px;
+    }
+  }
   body {
     @apply bg-background text-foreground;
   }
 }
 
 /* ===== NOISE OVERLAY ===== */
+/* Optimized: Use will-change and transform to create a compositor layer */
+/* This prevents the overlay from causing repaints during scroll */
 .noise-overlay {
   position: fixed;
   inset: 0;
@@ -215,6 +236,9 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: strict;
 }
 
 .dark .noise-overlay {
@@ -222,6 +246,7 @@
 }
 
 /* ===== FLOATING PILL NAVBAR ===== */
+/* Optimized: Use compositor layer to prevent scroll flickering */
 .neu-pill {
   background: linear-gradient(
     145deg,
@@ -236,6 +261,8 @@
     inset 0 1px 1px var(--neu-shadow-light),
     inset 0 -1px 1px var(--neu-inset-dark);
   transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .neu-pill:hover {
@@ -326,6 +353,7 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+  border-radius: var(--radius);
 }
 
 .neu-button-subtle:hover {
@@ -1074,8 +1102,17 @@ a:not([class]):hover {
   flex-shrink: 0;
 }
 
-.collapsible-content {
-  will-change: max-height, opacity;
+/* ===== CSS CONTAINMENT FOR PERFORMANCE ===== */
+.contain-content {
+  contain: content;
+}
+
+.contain-layout {
+  contain: layout;
+}
+
+.contain-paint {
+  contain: paint;
 }
 
 /* ===== DOCUMENT LAYOUT ===== */

@@ -1,8 +1,4 @@
-import { Link, Outlet } from 'react-router-dom';
-import { Sun, Moon, Upload, LogOut } from 'lucide-react';
-import { SignInButton } from '@clerk/clerk-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,11 +8,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { SignInButton } from '@clerk/clerk-react';
+import { LogOut, Moon, Sun, Upload } from 'lucide-react';
+import { Link, Outlet } from 'react-router-dom';
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
-  
+
   return (
     <Button
       variant="ghost"
@@ -72,18 +72,18 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-background relative">
-      {/* Noise texture overlay */}
-      <div className="noise-overlay" aria-hidden="true" />
-      
+      {/* Noise texture overlay - disabled for performance, causes GPU flicker on long pages */}
+      {/* <div className="noise-overlay" aria-hidden="true" /> */}
+
       {/* Floating pill navigation */}
       <header className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] max-w-2xl">
-        <nav 
-          className="neu-pill backdrop-blur-xl px-4 py-2 flex items-center justify-between"
+        <nav
+          className="neu-pill px-4 py-2 flex items-center justify-between"
           role="navigation"
           aria-label="Main navigation"
         >
-          <Link 
-            to="/" 
+          <Link
+            to="/"
             className="flex items-center space-x-2 group outline-none rounded-lg p-1 -m-1"
             aria-label="Notism - Go to home"
           >
@@ -94,7 +94,7 @@ export function Layout() {
 
           <div className="flex items-center space-x-2">
             <ThemeToggle />
-            
+
             {isAuthenticated ? (
               <>
                 <Link to="/upload" className="hidden sm:block">

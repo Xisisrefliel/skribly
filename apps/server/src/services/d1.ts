@@ -90,6 +90,10 @@ function rowToTranscription(row: TranscriptionRow): Transcription {
   };
 }
 
+function isUniqueEmailError(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed: user\.email/i.test(error.message);
+}
+
 export const d1Service = {
   /**
    * Ensure a user exists in the database (upsert)
@@ -100,82 +104,104 @@ export const d1Service = {
    * 2. User with same email but different ID exists -> migrate data and replace old user
    */
   async ensureUser(userId: string, name: string, email: string, image?: string): Promise<void> {
-    // First, check if a user with this ID already exists
+    const migrateUserData = async (oldUserId: string): Promise<void> => {
+      const tempEmail = `${userId}@temp.migrated`;
+      try {
+        await executeQuery(
+          `INSERT INTO user (id, name, email, image, created_at, updated_at)
+           VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+          [userId, name, tempEmail, image || null]
+        );
+      } catch (error) {
+        const checkAgain = await executeQuery<{ id: string }>(
+          `SELECT id FROM user WHERE id = ?`,
+          [userId]
+        );
+        if (checkAgain.length === 0) {
+          throw error;
+        }
+      }
+
+      await executeQuery(`UPDATE transcriptions SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
+      await executeQuery(`UPDATE folders SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
+      await executeQuery(`UPDATE tags SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
+      await executeQuery(`UPDATE quiz_attempts SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
+
+      await executeQuery(`DELETE FROM session WHERE user_id = ?`, [oldUserId]);
+      await executeQuery(`DELETE FROM account WHERE user_id = ?`, [oldUserId]);
+      await executeQuery(`DELETE FROM user WHERE id = ?`, [oldUserId]);
+
+      await executeQuery(
+        `UPDATE user SET email = ?, updated_at = datetime('now') WHERE id = ?`,
+        [email, userId]
+      );
+
+      console.log(`Migrated user data from ID ${oldUserId} to ${userId} (email: ${email})`);
+    };
+
+    const upsertUser = async (): Promise<void> => {
+      await executeQuery(
+        `INSERT INTO user (id, name, email, image, created_at, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           email = excluded.email,
+           image = excluded.image,
+           updated_at = datetime('now')`,
+        [userId, name, email, image || null]
+      );
+    };
+
     const existingById = await executeQuery<{ id: string; email: string }>(
       `SELECT id, email FROM user WHERE id = ?`,
       [userId]
     );
-    
-    if (existingById.length > 0) {
-      // User with this ID exists, just update their info
-      await executeQuery(
-        `UPDATE user SET name = ?, email = ?, image = ?, updated_at = datetime('now') WHERE id = ?`,
-        [name, email, image || null, userId]
+
+    if (existingById.length > 0 && email) {
+      const emailOwner = await executeQuery<{ id: string }>(
+        `SELECT id FROM user WHERE email = ? AND id != ?`,
+        [email, userId]
       );
+      if (emailOwner.length > 0) {
+        await migrateUserData(emailOwner[0].id);
+        return;
+      }
+      await upsertUser();
       return;
     }
-    
-    // Check if a user with this email already exists with a different ID
+
     if (email) {
       const existingByEmail = await executeQuery<{ id: string }>(
         `SELECT id FROM user WHERE email = ?`,
         [email]
       );
-      
-      if (existingByEmail.length > 0) {
-        const oldUserId = existingByEmail[0].id;
-        
-        // Step 1: Create the new user FIRST with a temporary unique email
-        // This ensures the user exists before we update foreign keys
-        const tempEmail = `${userId}@temp.migrated`;
-        try {
-          await executeQuery(
-            `INSERT INTO user (id, name, email, image, created_at, updated_at)
-             VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-            [userId, name, tempEmail, image || null]
-          );
-        } catch (error) {
-          // If this fails, the user might already exist - check again
-          const checkAgain = await executeQuery<{ id: string }>(
-            `SELECT id FROM user WHERE id = ?`,
-            [userId]
-          );
-          if (checkAgain.length === 0) {
-            throw error; // Re-throw if user still doesn't exist
-          }
-          // User exists now, continue with migration
-        }
-        
-        // Step 2: Update all foreign key references from old ID to new ID
-        await executeQuery(`UPDATE transcriptions SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
-        await executeQuery(`UPDATE folders SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
-        await executeQuery(`UPDATE tags SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
-        await executeQuery(`UPDATE quiz_attempts SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
-        
-        // Step 3: Delete old sessions and accounts (they'll be recreated by Clerk)
-        await executeQuery(`DELETE FROM session WHERE user_id = ?`, [oldUserId]);
-        await executeQuery(`DELETE FROM account WHERE user_id = ?`, [oldUserId]);
-        
-        // Step 4: Delete the old user record
-        await executeQuery(`DELETE FROM user WHERE id = ?`, [oldUserId]);
-        
-        // Step 5: Update the new user's email to the correct one
-        await executeQuery(
-          `UPDATE user SET email = ?, updated_at = datetime('now') WHERE id = ?`,
-          [email, userId]
-        );
-        
-        console.log(`Migrated user data from ID ${oldUserId} to ${userId} (email: ${email})`);
+
+      if (existingByEmail.length > 0 && existingByEmail[0].id !== userId) {
+        await migrateUserData(existingByEmail[0].id);
         return;
       }
     }
-    
-    // No conflicts, insert the new user normally
-    await executeQuery(
-      `INSERT INTO user (id, name, email, image, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [userId, name, email, image || null]
-    );
+
+    try {
+      await upsertUser();
+    } catch (error) {
+      if (isUniqueEmailError(error) && email) {
+        const emailOwner = await executeQuery<{ id: string }>(
+          `SELECT id FROM user WHERE email = ?`,
+          [email]
+        );
+        if (emailOwner.length > 0 && emailOwner[0].id !== userId) {
+          await migrateUserData(emailOwner[0].id);
+          return;
+        }
+        await executeQuery(
+          `UPDATE user SET name = ?, email = ?, image = ?, updated_at = datetime('now') WHERE id = ?`,
+          [name, email, image || null, userId]
+        );
+        return;
+      }
+      throw error;
+    }
   },
 
   /**

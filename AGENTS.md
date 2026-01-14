@@ -140,7 +140,6 @@ packages/
 
 ## Common Gotchas
 
-1. **Server ESM** - Use `.js` extension in imports (even for `.ts` files)
 2. **Monorepo imports** - IDE errors for `@lecture/shared` are false positives
 3. **iOS app** - Incomplete, has build errors - ignore and focus on server/web
 4. **Tailwind v4** - Uses `@theme inline` syntax, not `tailwind.config.js`
