@@ -1,19 +1,20 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  CloudUpload, 
-  FileAudio, 
+import {
+  CloudUpload,
+  FileAudio,
   FileVideo,
   FileText,
   Files,
-  X, 
+  X,
   Loader2,
-  Upload
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
+import { useBillingStatus } from '@/hooks/useBillingStatus';
 import { api } from '@/lib/api';
 import { formatFileSize, cn } from '@/lib/utils';
 
@@ -25,11 +26,16 @@ interface FileUploadProps {
 export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: FileUploadProps) {
   const navigate = useNavigate();
   const { invalidateTranscriptions } = useTranscriptionCache();
+  const { billingStatus, isLoading: isBillingLoading } = useBillingStatus();
   const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const maxFileSizeBytes = 100 * 1024 * 1024;
+  const maxBatchFiles = 5;
 
   const acceptedMimeTypes = [
     // Audio formats
@@ -79,17 +85,26 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
     
     const validFiles: File[] = [];
     const invalidFiles: string[] = [];
+    const oversizedFiles: string[] = [];
 
     Array.from(newFiles).forEach(f => {
-      if (isValidFile(f)) {
-        validFiles.push(f);
-      } else {
+      if (!isValidFile(f)) {
         invalidFiles.push(f.name);
+        return;
       }
+      if (f.size > maxFileSizeBytes) {
+        oversizedFiles.push(f.name);
+        return;
+      }
+      validFiles.push(f);
     });
 
     if (invalidFiles.length > 0) {
       setError(`Invalid file type(s): ${invalidFiles.join(', ')}. Please upload audio, video, or documents (PDF, PPTX, DOCX).`);
+    }
+
+    if (oversizedFiles.length > 0) {
+      setError(`Files over 100MB are not supported: ${oversizedFiles.join(', ')}.`);
     }
 
     if (validFiles.length > 0) {
@@ -101,13 +116,17 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
             t.name === f.name && t.size === f.size
           ))
         );
+        const limited = unique.slice(0, maxBatchFiles);
+        if (unique.length > maxBatchFiles) {
+          setError(`You can upload up to ${maxBatchFiles} files per batch.`);
+        }
         
-        if (!title && unique.length > 0) {
-          const defaultTitle = unique[0].name.replace(/\.[^/.]+$/, '') + (unique.length > 1 ? ' and others' : '');
+        if (!title && limited.length > 0) {
+          const defaultTitle = limited[0].name.replace(/\.[^/.]+$/, '') + (limited.length > 1 ? ' and others' : '');
           setTitle(defaultTitle);
         }
         
-        return unique;
+        return limited;
       });
     }
   };
@@ -135,6 +154,19 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
       return updated;
     });
   }, [title]);
+
+  const handleSubscribe = async () => {
+    setIsCheckoutLoading(true);
+    setError(null);
+    try {
+      const response = await api.createBillingCheckout();
+      window.location.href = response.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start checkout');
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
 
   const handleUpload = async () => {
     if (files.length === 0) return;
@@ -167,6 +199,58 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
       setIsUploading(false);
     }
   };
+
+  if (isBillingLoading && !billingStatus) {
+    return (
+      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            Checking subscription
+          </CardTitle>
+          <CardDescription>Verifying your subscription status.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (billingStatus && !billingStatus.isActive) {
+    return (
+      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
+        <CardHeader>
+          <CardTitle>Subscription required</CardTitle>
+          <CardDescription>
+            Subscribe to Notism Pro for $7.99/month to upload and transcribe unlimited lectures.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {error && (
+            <div
+              role="alert"
+              className="p-3 rounded-xl bg-status-error-soft border border-status-error/30 text-status-error text-sm"
+            >
+              {error}
+            </div>
+          )}
+          <Button
+            onClick={handleSubscribe}
+            className="w-full neu-button-primary"
+            size="lg"
+            disabled={isCheckoutLoading}
+          >
+            {isCheckoutLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Opening checkout...
+              </>
+            ) : (
+              'Subscribe for $7.99/month'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">

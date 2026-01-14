@@ -29,6 +29,13 @@ interface ApiError {
   message: string;
 }
 
+interface BillingStatusResponse {
+  isActive: boolean;
+  status: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+}
+
 type TokenGetter = () => Promise<string | null>;
 
 class ApiClient {
@@ -181,7 +188,21 @@ class ApiClient {
     return response.transcription;
   }
 
-  
+  async getBillingStatus(): Promise<BillingStatusResponse> {
+    return this.request<BillingStatusResponse>('/api/billing/status');
+  }
+
+  async createBillingCheckout(): Promise<{ url: string }> {
+    return this.request<{ url: string }>('/api/billing/checkout', {
+      method: 'POST',
+    });
+  }
+
+  async createBillingPortal(): Promise<{ url: string }> {
+    return this.request<{ url: string }>('/api/billing/portal', {
+      method: 'POST',
+    });
+  }
 
   // Study features
 

@@ -66,6 +66,15 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
   const userId = req.userId!;
 
   try {
+    const isActive = await d1Service.isSubscriptionActive(userId);
+    if (!isActive) {
+      res.status(402).json({
+        error: 'Subscription required',
+        message: 'An active subscription is required to start transcription.',
+      });
+      return;
+    }
+
     // Get the transcription record
     const transcription = await d1Service.getTranscription(id, userId);
 

@@ -10,6 +10,7 @@ import { studyRouter } from './routes/study.js';
 import { publicRouter } from './routes/public.js';
 import { foldersRouter } from './routes/folders.js';
 import { tagsRouter } from './routes/tags.js';
+import { billingRouter, handleBillingWebhook } from './routes/billing.js';
 import { d1Service } from './services/d1.js';
 
 const app = express();
@@ -58,6 +59,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
+
+// Webhook route needs raw body for signature validation
+app.post('/api/billing/webhook', express.raw({ type: '*/*' }), handleBillingWebhook);
+
 app.use(express.json());
 
 // Clerk middleware - must be applied before routes
@@ -90,6 +95,7 @@ app.post('/init-db', async (_req, res) => {
 
 // API routes (protected)
 app.use('/api', authMiddleware);
+app.use('/api', billingRouter);
 app.use('/api', uploadRouter);
 app.use('/api', transcriptionRouter);
 app.use('/api', studyRouter);

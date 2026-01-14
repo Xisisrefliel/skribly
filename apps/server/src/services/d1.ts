@@ -64,6 +64,18 @@ interface TranscriptionRow {
   updated_at: string;
 }
 
+interface SubscriptionRow {
+  user_id: string;
+  subscription_id: string;
+  customer_id: string;
+  product_id: string;
+  status: string;
+  current_period_end: string | null;
+  cancel_at_period_end: number;
+  created_at: string;
+  updated_at: string;
+}
+
 function rowToTranscription(row: TranscriptionRow): Transcription {
   return {
     id: row.id,
@@ -428,6 +440,30 @@ export const d1Service = {
         CREATE INDEX IF NOT EXISTS idx_transcriptions_user_id 
         ON transcriptions(user_id)
       `);
+    } catch (e) {
+      // Index already exists, ignore
+    }
+
+    // ============================================
+    // Subscription tables
+    // ============================================
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        user_id TEXT PRIMARY KEY,
+        subscription_id TEXT NOT NULL,
+        customer_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        current_period_end TEXT,
+        cancel_at_period_end INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    try {
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)`);
     } catch (e) {
       // Index already exists, ignore
     }
@@ -1385,5 +1421,64 @@ export const d1Service = {
     }
 
     return transcriptions;
+  },
+
+  // ============================================
+  // Subscription operations
+  // ============================================
+
+  async getSubscriptionByUser(userId: string): Promise<SubscriptionRow | null> {
+    const rows = await executeQuery<SubscriptionRow>(
+      `SELECT * FROM subscriptions WHERE user_id = ?`,
+      [userId]
+    );
+    return rows[0] || null;
+  },
+
+  async upsertSubscription(data: {
+    userId: string;
+    subscriptionId: string;
+    customerId: string;
+    productId: string;
+    status: string;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  }): Promise<void> {
+    await executeQuery(
+      `INSERT INTO subscriptions (
+        user_id, subscription_id, customer_id, product_id, status, current_period_end, cancel_at_period_end, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        subscription_id = excluded.subscription_id,
+        customer_id = excluded.customer_id,
+        product_id = excluded.product_id,
+        status = excluded.status,
+        current_period_end = excluded.current_period_end,
+        cancel_at_period_end = excluded.cancel_at_period_end,
+        updated_at = datetime('now')`,
+      [
+        data.userId,
+        data.subscriptionId,
+        data.customerId,
+        data.productId,
+        data.status,
+        data.currentPeriodEnd,
+        data.cancelAtPeriodEnd ? 1 : 0,
+      ]
+    );
+  },
+
+  async isSubscriptionActive(userId: string): Promise<boolean> {
+    const subscription = await this.getSubscriptionByUser(userId);
+    if (!subscription) return false;
+    if (subscription.status !== 'active') return false;
+
+    if (subscription.current_period_end) {
+      const periodEnd = new Date(subscription.current_period_end).getTime();
+      if (Number.isNaN(periodEnd)) return false;
+      return periodEnd > Date.now();
+    }
+
+    return true;
   },
 };

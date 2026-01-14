@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import type { Router as RouterType } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,7 +13,7 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB max file size
+    fileSize: 100 * 1024 * 1024, // 100MB max file size
   },
   fileFilter: (_req, file, cb) => {
     // Accept audio, video, and document files
@@ -58,8 +58,29 @@ const upload = multer({
   },
 });
 
+async function requireActiveSubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId!;
+    const isActive = await d1Service.isSubscriptionActive(userId);
+    if (!isActive) {
+      res.status(402).json({
+        error: 'Subscription required',
+        message: 'An active subscription is required to upload files.',
+      });
+      return;
+    }
+    next();
+  } catch (error) {
+    console.error('Subscription check failed:', error);
+    res.status(500).json({
+      error: 'Failed to verify subscription',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
 // POST /api/upload - Upload an audio or video file
-router.post('/upload', upload.single('audio'), async (req: Request, res: Response): Promise<void> => {
+router.post('/upload', requireActiveSubscription, upload.single('audio'), async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;
     const file = req.file;
@@ -157,7 +178,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
 });
 
 // POST /api/upload-batch - Upload multiple documents to be processed together
-router.post('/upload-batch', upload.array('files', 10), async (req: Request, res: Response): Promise<void> => {
+router.post('/upload-batch', requireActiveSubscription, upload.array('files', 5), async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;
     const files = req.files as Express.Multer.File[];

@@ -59,7 +59,7 @@ export function FolderSidebar({ selectedFolderId, onFolderSelect, compact = fals
       name: newFolderName.trim(),
       color: newFolderColor,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      userId: '',
     };
 
     setIsCreatingLoading(true);

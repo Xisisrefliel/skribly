@@ -51,7 +51,7 @@ export function TagFilter({ selectedTagIds, onTagToggle }: TagFilterProps) {
       name: newTagName.trim(),
       color: newTagColor,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      userId: '',
     };
 
     setIsCreatingLoading(true);

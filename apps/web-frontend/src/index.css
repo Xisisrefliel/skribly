@@ -201,23 +201,8 @@
     @apply border-border outline-ring/50;
   }
   html {
-    /* High-DPI display scaling - matches 150% browser zoom */
-    font-size: 24px;
-  }
-  @media (max-width: 1600px) {
-    html {
-      font-size: 20px;
-    }
-  }
-  @media (max-width: 1200px) {
-    html {
-      font-size: 17px;
-    }
-  }
-  @media (max-width: 800px) {
-    html {
-      font-size: 15px;
-    }
+    /* High-DPI display scaling with a capped range so the UI never grows too big */
+    font-size: clamp(15px, calc(1vw + 14px), 19px);
   }
   body {
     @apply bg-background text-foreground;

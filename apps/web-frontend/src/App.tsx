@@ -7,6 +7,8 @@ import { Layout } from '@/components/Layout';
 import { HomePage } from '@/pages/HomePage';
 import { UploadPage } from '@/pages/UploadPage';
 import { TranscriptionPage } from '@/pages/TranscriptionPage';
+import { PrivacyPolicyPage } from '@/pages/PrivacyPolicyPage';
+import { TermsOfServicePage } from '@/pages/TermsOfServicePage';
 
 function App() {
   return (
@@ -29,6 +31,8 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/transcription/:id" element={<TranscriptionPage />} />
+              <Route path="/privacy" element={<PrivacyPolicyPage />} />
+              <Route path="/terms" element={<TermsOfServicePage />} />
             </Route>
           </Routes>
           </BrowserRouter>
