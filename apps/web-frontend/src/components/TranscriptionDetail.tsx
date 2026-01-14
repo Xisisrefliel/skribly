@@ -150,6 +150,7 @@ export function TranscriptionDetail() {
   const [isCopied, setIsCopied] = useState(false);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [isDownloadingSource, setIsDownloadingSource] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   const fetchTranscription = useCallback(async () => {
     if (!id) return;
@@ -249,6 +250,32 @@ export function TranscriptionDetail() {
       setError(err instanceof Error ? err.message : 'Failed to download source media');
     } finally {
       setIsDownloadingSource(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!id || !transcription) return;
+
+    setIsDownloadingPdf(true);
+    try {
+      const pdfUrl = transcription.pdfKey
+        ? await api.getPdfDownloadUrl(id)
+        : await api.generatePdf(id);
+
+      const a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = `${transcription.title}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      if (!transcription.pdfKey) {
+        await fetchTranscription();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download PDF');
+    } finally {
+      setIsDownloadingPdf(false);
     }
   };
 
@@ -780,6 +807,28 @@ export function TranscriptionDetail() {
                       </span>
                     </div>
                   </button>
+                  {isAuthenticated && (
+                    <Button
+                      onClick={handleDownloadPdf}
+                      disabled={isDownloadingPdf}
+                      size="sm"
+                      className="neu-button w-full mt-4"
+                      title={transcription.pdfKey ? 'Download structured PDF' : 'Generate PDF'}
+                    >
+                      {isDownloadingPdf ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      <span className="ml-2">
+                        {isDownloadingPdf
+                          ? 'Preparing PDF...'
+                          : transcription.pdfKey
+                            ? 'Download PDF'
+                            : 'Generate PDF'}
+                      </span>
+                    </Button>
+                  )}
               </CardContent>
             </Card>
           </aside>

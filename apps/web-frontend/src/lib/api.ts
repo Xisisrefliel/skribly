@@ -135,6 +135,18 @@ class ApiClient {
     return response.transcription;
   }
 
+  async getPdfDownloadUrl(id: string): Promise<string> {
+    const response = await this.request<{ url: string }>(`/api/transcription/${id}/pdf`);
+    return response.url;
+  }
+
+  async generatePdf(id: string): Promise<string> {
+    const response = await this.request<{ url: string }>(`/api/transcription/${id}/pdf`, {
+      method: 'POST',
+    });
+    return response.url;
+  }
+
   async uploadFile(file: File, title: string): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('audio', file);

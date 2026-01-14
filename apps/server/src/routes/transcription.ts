@@ -3,6 +3,7 @@ import type { Router as RouterType } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { d1Service } from '../services/d1.js';
 import { r2Service } from '../services/r2.js';
+import { pdfService } from '../services/pdf.js';
 import { transcriptionService } from '../services/transcription.js';
 import { llmService } from '../services/llm.js';
 
@@ -56,6 +57,79 @@ router.get('/transcription/:id', async (req: Request, res: Response): Promise<vo
     res.status(500).json({ 
       error: 'Failed to get transcription', 
       message: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// GET /api/transcription/:id/pdf - Download structured PDF
+router.get('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (!transcription.pdfKey) {
+      res.status(404).json({ error: 'Not Found', message: 'PDF not ready yet' });
+      return;
+    }
+
+    const url = await r2Service.getSignedUrl(transcription.pdfKey, 86400);
+    res.json({ url });
+  } catch (error) {
+    console.error('Download PDF error:', error);
+    res.status(500).json({
+      error: 'Failed to download PDF',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// POST /api/transcription/:id/pdf - Generate structured PDF on demand
+router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (!transcription.structuredText) {
+      res.status(409).json({ error: 'Conflict', message: 'Structured transcription not ready yet' });
+      return;
+    }
+
+    if (transcription.pdfKey) {
+      const url = await r2Service.getSignedUrl(transcription.pdfKey, 86400);
+      res.json({ url });
+      return;
+    }
+
+    const { pdfKey, pdfUrl } = await pdfService.generateAndUpload(
+      id,
+      userId,
+      transcription.structuredText,
+      transcription.title,
+      'structured'
+    );
+
+    await d1Service.updatePdfInfo(id, pdfKey);
+
+    res.json({ url: pdfUrl });
+  } catch (error) {
+    console.error('Generate PDF error:', error);
+    res.status(500).json({
+      error: 'Failed to generate PDF',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -199,6 +273,7 @@ async function generateStudyMaterials(transcriptionId: string, content: string, 
  */
 async function processFromRawText(
   id: string,
+  userId: string,
   rawText: string,
   title: string,
   whisperModel: string | null = null,
@@ -220,6 +295,19 @@ async function processFromRawText(
     if (structuredText) {
       // Generate quiz and flashcards
       await generateStudyMaterials(id, structuredText, title, detectedLanguage);
+
+      try {
+        const { pdfKey } = await pdfService.generateAndUpload(
+          id,
+          userId,
+          structuredText,
+          title,
+          'structured'
+        );
+        await d1Service.updatePdfInfo(id, pdfKey);
+      } catch (pdfError) {
+        console.error(`PDF generation failed for ${id}:`, pdfError);
+      }
     }
   } catch (llmError) {
     console.error(`LLM structuring failed for ${id}:`, llmError);
@@ -309,7 +397,7 @@ async function processDocumentTranscription(
 
     // Process from raw text onwards (reuse common pipeline)
     const infoModel = `document/${finalSourceType}${rawText.includes('--- Source File:') ? '-batch' : ''}`;
-    await processFromRawText(id, rawText, title, infoModel, null);
+    await processFromRawText(id, userId, rawText, title, infoModel, null);
 
   } catch (error) {
     console.error(`Document processing failed for ${id}:`, error);
@@ -398,7 +486,7 @@ async function processTranscription(id: string, userId: string, audioUrl: string
     await d1Service.updateTranscriptionStatus(id, 'processing', 0.87);
 
     // Process from raw text onwards (reuse common pipeline)
-    await processFromRawText(id, fullTranscription, title, whisperModel, totalDuration);
+    await processFromRawText(id, userId, fullTranscription, title, whisperModel, totalDuration);
 
   } catch (error) {
     console.error(`Transcription failed for ${id}:`, error);

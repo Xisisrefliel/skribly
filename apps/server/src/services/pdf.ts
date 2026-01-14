@@ -1,5 +1,5 @@
 import { mdToPdf } from 'md-to-pdf';
-import { r2Service } from './r2';
+import { r2Service } from './r2.js';
 
 export interface PDFResult {
   pdfUrl: string;
@@ -166,6 +166,19 @@ a {
 .table-cols-many th, .table-cols-many td { padding: 2pt 1pt; }
 `;
 
+const MATHJAX_SCRIPT = `
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    },
+    svg: { fontCache: 'global' },
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+`;
+
 /**
  * Parse inline markdown formatting to HTML
  */
@@ -302,8 +315,10 @@ export const pdfService = {
     // Preprocess tables to add sizing classes
     content = preprocessTables(content);
 
+    const contentWithMathJax = `${MATHJAX_SCRIPT}\n${content}`;
+
     const result = await mdToPdf(
-      { content },
+      { content: contentWithMathJax },
       {
         css: PDF_STYLES,
         pdf_options: {
@@ -334,6 +349,7 @@ export const pdfService = {
    */
   async generateAndUpload(
     transcriptionId: string,
+    userId: string,
     markdown: string,
     title: string,
     type: 'structured' | 'raw' = 'structured'
@@ -349,7 +365,7 @@ export const pdfService = {
       .replace(/\s+/g, '-')
       .substring(0, 50);
     
-    const pdfKey = `pdfs/${transcriptionId}/${type}-${safeTitle}.pdf`;
+    const pdfKey = `pdfs/${userId}/${transcriptionId}/${type}-${safeTitle}.pdf`;
 
     // Upload to R2
     await r2Service.uploadFile(pdfKey, pdfBuffer, 'application/pdf');
