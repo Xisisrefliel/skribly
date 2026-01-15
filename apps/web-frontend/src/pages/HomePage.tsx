@@ -112,10 +112,10 @@ export function HomePage() {
   if (!isAuthenticated) {
     return (
       <div className="relative overflow-hidden min-h-screen w-full flex flex-col">
-        <div className="fixed inset-0 pointer-events-none opacity-80 -z-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(79,70,229,0.12), transparent 26%), radial-gradient(circle at 50% 80%, rgba(12,12,12,0.08), transparent 40%)' }} />
-        <div className="fixed inset-0 pointer-events-none -z-10" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: '120px 120px' }} />
+        <div className="fixed inset-0 pointer-events-none opacity-80 z-0" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(79,70,229,0.12), transparent 26%), radial-gradient(circle at 50% 80%, rgba(12,12,12,0.08), transparent 40%)' }} />
+        <div className="fixed inset-0 pointer-events-none z-0" style={{ backgroundImage: 'linear-gradient(var(--landing-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--landing-grid-line) 1px, transparent 1px)', backgroundSize: '120px 120px' }} />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-16 md:py-24 flex flex-col gap-16 md:gap-20 flex-1">
+        <div className="relative z-10 max-w-6xl mx-auto flex flex-col gap-16 md:gap-20 flex-1">
           {/* Hero */}
           <div className="flex flex-col gap-10 md:gap-12 animate-fade-in-up">
             <div className="inline-flex items-center gap-3 self-start px-4 py-2 rounded-full neu-floating-card text-sm font-medium text-foreground/80 shadow-inner">
@@ -142,12 +142,6 @@ export function HomePage() {
                     <ArrowRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-1" />
                   </Button>
                 </SignInButton>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <div className="h-8 w-8 rounded-lg neu-floating-card flex items-center justify-center">
-                      <Mic className="h-4 w-4 text-foreground/70" />
-                    </div>
-                    <span className="font-medium">No credit card. Drop a recording, PDF, doc, or deck.</span>
-                  </div>
                 </div>
               </div>
 
