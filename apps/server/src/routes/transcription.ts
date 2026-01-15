@@ -227,6 +227,138 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
   }
 });
 
+// POST /api/transcription/:id/reprocess - Re-run transcription and structuring
+router.post('/transcription/:id/reprocess', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const userId = req.userId!;
+
+  try {
+    const isActive = await d1Service.isSubscriptionActive(userId);
+    if (!isActive) {
+      res.status(402).json({
+        error: 'Subscription required',
+        message: 'An active subscription is required to reprocess transcription.',
+      });
+      return;
+    }
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (transcription.status === 'processing' || transcription.status === 'structuring') {
+      res.status(409).json({ error: 'Conflict', message: 'Transcription is already processing' });
+      return;
+    }
+
+    const { sourceType, audioUrl, mimeType } = transcription as typeof transcription & {
+      sourceType?: string;
+      mimeType?: string | null;
+    };
+
+    if (!audioUrl) {
+      throw new Error('No source file URL found');
+    }
+
+    await d1Service.clearStructuredContent(id);
+    await d1Service.updateTranscriptionStatus(id, 'processing', 0);
+
+    res.status(202).json({
+      id,
+      status: 'processing',
+      message: 'Reprocessing started',
+    } as TranscribeResponse);
+
+    if (sourceType === 'pdf' || sourceType === 'pptx' || sourceType === 'ppt') {
+      processDocumentTranscription(
+        id,
+        userId,
+        audioUrl,
+        sourceType as 'pdf' | 'pptx' | 'ppt',
+        mimeType
+      ).catch(err => {
+        console.error(`Background document processing error for ${id}:`, err);
+      });
+    } else {
+      processTranscription(id, userId, audioUrl).catch(err => {
+        console.error(`Background transcription error for ${id}:`, err);
+      });
+    }
+  } catch (error) {
+    console.error('Reprocess transcription error:', error);
+    res.status(500).json({
+      error: 'Failed to reprocess transcription',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// POST /api/transcription/:id/restructure - Re-run LLM structuring from raw text
+router.post('/transcription/:id/restructure', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const userId = req.userId!;
+
+  try {
+    const isActive = await d1Service.isSubscriptionActive(userId);
+    if (!isActive) {
+      res.status(402).json({
+        error: 'Subscription required',
+        message: 'An active subscription is required to recreate notes.',
+      });
+      return;
+    }
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (transcription.status === 'processing' || transcription.status === 'structuring') {
+      res.status(409).json({ error: 'Conflict', message: 'Transcription is already processing' });
+      return;
+    }
+
+    if (!transcription.transcriptionText) {
+      res.status(400).json({
+        error: 'Missing transcription text',
+        message: 'No raw transcription text found to restructure.'
+      });
+      return;
+    }
+
+    await d1Service.clearStructuredContent(id);
+    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.85);
+
+    res.status(202).json({
+      id,
+      status: 'structuring',
+      message: 'Restructuring started',
+    } as TranscribeResponse);
+
+    processFromRawText(
+      id,
+      userId,
+      transcription.transcriptionText,
+      transcription.title,
+      transcription.whisperModel,
+      transcription.audioDuration ?? 0
+    ).catch(err => {
+      console.error(`Background restructuring error for ${id}:`, err);
+    });
+  } catch (error) {
+    console.error('Restructure transcription error:', error);
+    res.status(500).json({
+      error: 'Failed to restructure transcription',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // POST /api/transcribe/:id - Start transcription process
 router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;

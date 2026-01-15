@@ -153,7 +153,7 @@ export function Layout() {
   const shouldShowFooter = isAuthenticated || location.pathname !== '/';
 
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="min-h-screen bg-background relative flex flex-col">
       {/* Noise texture overlay - disabled for performance, causes GPU flicker on long pages */}
       {/* <div className="noise-overlay" aria-hidden="true" /> */}
 
@@ -215,16 +215,22 @@ export function Layout() {
       </header>
 
       {/* Main content with top padding for floating nav */}
-      <main className={`container mx-auto px-4 pt-24 pb-8 ${isContentLocked ? 'pointer-events-none select-none opacity-60' : ''}`}>
+      <main className={`container mx-auto px-4 pt-24 pb-8 flex-1 ${isContentLocked ? 'pointer-events-none select-none opacity-60' : ''}`}>
         <Outlet />
       </main>
 
       {shouldShowFooter && (
-        <footer className="container mx-auto px-4 pb-10 text-xs text-muted-foreground flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <footer className="container mx-auto mt-auto px-4 pb-6 text-[0.7rem] text-muted-foreground flex flex-row flex-wrap items-center justify-between gap-3 sm:text-xs">
           <span>© 2026 Notism</span>
           <div className="flex items-center gap-4">
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
+            <a
+              href="mailto:info@notism.one"
+              className="hover:text-foreground transition-colors"
+            >
+              Report a bug
+            </a>
           </div>
         </footer>
       )}

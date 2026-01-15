@@ -759,6 +759,19 @@ export const d1Service = {
   },
 
   /**
+   * Clear structured content and PDF metadata
+   */
+  async clearStructuredContent(id: string): Promise<void> {
+    await executeQuery(
+      `UPDATE transcriptions
+       SET structured_text = NULL, pdf_key = NULL, pdf_generated_at = NULL,
+           error_message = NULL, updated_at = datetime('now')
+       WHERE id = ?`,
+      [id]
+    );
+  },
+
+  /**
    * Delete a transcription
    */
   async deleteTranscription(id: string, userId: string): Promise<boolean> {

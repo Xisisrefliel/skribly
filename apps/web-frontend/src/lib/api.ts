@@ -187,6 +187,18 @@ class ApiClient {
     });
   }
 
+  async reprocessTranscription(id: string): Promise<TranscribeResponse> {
+    return this.request<TranscribeResponse>(`/api/transcription/${id}/reprocess`, {
+      method: 'POST',
+    });
+  }
+
+  async restructureTranscription(id: string): Promise<TranscribeResponse> {
+    return this.request<TranscribeResponse>(`/api/transcription/${id}/restructure`, {
+      method: 'POST',
+    });
+  }
+
   async deleteTranscription(id: string): Promise<void> {
     await this.request(`/api/transcription/${id}`, {
       method: 'DELETE',

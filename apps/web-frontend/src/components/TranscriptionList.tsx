@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Transcription } from '@lecture/shared';
 import { Mic, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -16,6 +16,7 @@ interface TranscriptionListProps {
 export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionListProps) {
   const {
     fetchTranscriptions,
+    getCachedTranscriptions,
     tags: allTags,
     fetchTags,
     folders: allFolders,
@@ -28,25 +29,17 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  
-  // Track if this is the initial load for this filter combination
-  const filterKeyRef = useRef<string>('');
 
-  const loadData = async (forceRefresh = false) => {
-    const currentKey = `${folderId ?? 'none'}:${tagIds?.join(',') ?? ''}`;
-    const isFilterChange = currentKey !== filterKeyRef.current;
-    filterKeyRef.current = currentKey;
-    
-    // If filter changed or force refresh, invalidate cache
-    if (isFilterChange || forceRefresh) {
-      if (forceRefresh) {
-        invalidateTranscriptions();
-      }
-      setIsLoading(true);
+  const tagKey = tagIds?.join(',') ?? '';
+  const cachedTranscriptions = getCachedTranscriptions(folderId, tagIds);
+
+  const loadData = useCallback(async (forceRefresh = false) => {
+    if (forceRefresh) {
+      invalidateTranscriptions(folderId, tagIds);
     }
-    
+
     try {
-      const data = await fetchTranscriptions(folderId, tagIds);
+      const data = await fetchTranscriptions(folderId, tagIds, { forceRefresh });
       setTranscriptions(data);
       setError(null);
       if (data.length === 0 && onEmpty) {
@@ -57,13 +50,21 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchTranscriptions, folderId, invalidateTranscriptions, onEmpty, tagIds]);
 
   useEffect(() => {
+    if (cachedTranscriptions !== null) {
+      setTranscriptions(cachedTranscriptions);
+      setIsLoading(false);
+    } else {
+      setTranscriptions([]);
+      setIsLoading(true);
+    }
+
     loadData();
     fetchTags();
     fetchFolders();
-  }, [folderId, tagIds?.join(',')]);
+  }, [cachedTranscriptions, fetchFolders, fetchTags, folderId, loadData, tagKey]);
 
   useEffect(() => {
     // Poll for updates every 5 seconds if there are processing items
@@ -78,7 +79,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [transcriptions.length]);
+  }, [loadData, transcriptions]);
 
   const handleCopyUrl = async (transcription: Transcription) => {
     const url = `${window.location.origin}/transcription/${transcription.id}`;
@@ -151,9 +152,6 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
       )
     );
     updateTranscriptionInCache(transcription.id, { folderId: newFolderId });
-    
-    // Also invalidate cache since folder change affects list filtering
-    invalidateTranscriptions();
 
     try {
       await api.updateTranscription(transcription.id, { folderId: targetFolderId });
@@ -169,6 +167,65 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
       );
       updateTranscriptionInCache(transcription.id, { folderId: originalFolderId });
       console.error('Failed to move to folder:', err);
+    }
+  };
+
+  const handleMoveTag = async (sourceTranscriptionId: string, targetTranscriptionId: string, tagId: string) => {
+    if (sourceTranscriptionId === targetTranscriptionId) return;
+
+    const sourceTranscription = transcriptions.find(t => t.id === sourceTranscriptionId);
+    const targetTranscription = transcriptions.find(t => t.id === targetTranscriptionId);
+
+    if (!sourceTranscription || !targetTranscription) return;
+
+    const sourceTagIds = sourceTranscription.tags?.map(tag => tag.id) || [];
+    const targetTagIds = targetTranscription.tags?.map(tag => tag.id) || [];
+
+    if (!sourceTagIds.includes(tagId)) return;
+
+    const tagToMove = sourceTranscription.tags?.find(tag => tag.id === tagId)
+      ?? allTags.find(tag => tag.id === tagId);
+
+    const newSourceTagIds = sourceTagIds.filter(id => id !== tagId);
+    const newTargetTagIds = targetTagIds.includes(tagId) ? targetTagIds : [...targetTagIds, tagId];
+
+    const newSourceTags = (sourceTranscription.tags || []).filter(tag => tag.id !== tagId);
+    const newTargetTags = targetTagIds.includes(tagId)
+      ? (targetTranscription.tags || [])
+      : [...(targetTranscription.tags || []), ...(tagToMove ? [tagToMove] : [])];
+
+    setTranscriptions(prev => prev.map(t => {
+      if (t.id === sourceTranscriptionId) {
+        return { ...t, tags: newSourceTags };
+      }
+      if (t.id === targetTranscriptionId) {
+        return { ...t, tags: newTargetTags };
+      }
+      return t;
+    }));
+
+    updateTranscriptionInCache(sourceTranscriptionId, { tags: newSourceTags });
+    updateTranscriptionInCache(targetTranscriptionId, { tags: newTargetTags });
+
+    try {
+      await Promise.all([
+        api.updateTranscription(sourceTranscriptionId, { tagIds: newSourceTagIds }),
+        api.updateTranscription(targetTranscriptionId, { tagIds: newTargetTagIds }),
+      ]);
+    } catch (err) {
+      setTranscriptions(prev => prev.map(t => {
+        if (t.id === sourceTranscriptionId) {
+          return { ...t, tags: sourceTranscription.tags };
+        }
+        if (t.id === targetTranscriptionId) {
+          return { ...t, tags: targetTranscription.tags };
+        }
+        return t;
+      }));
+
+      updateTranscriptionInCache(sourceTranscriptionId, { tags: sourceTranscription.tags });
+      updateTranscriptionInCache(targetTranscriptionId, { tags: targetTranscription.tags });
+      console.error('Failed to move tag:', err);
     }
   };
 
@@ -235,19 +292,21 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {transcriptions.map((transcription, index) => (
-        <TranscriptionCard
-          key={transcription.id}
-          transcription={transcription}
-          allTags={allTags}
-          allFolders={allFolders}
-          currentFolderId={folderId}
-          copiedId={copiedId}
-          animationDelay={index * 50}
-          onCopyUrl={handleCopyUrl}
-          onTogglePublic={handleTogglePublic}
-          onToggleTag={handleToggleTag}
-          onMoveToFolder={handleMoveToFolder}
-        />
+          <TranscriptionCard
+            key={transcription.id}
+            transcription={transcription}
+            allTags={allTags}
+            allFolders={allFolders}
+            currentFolderId={folderId}
+            copiedId={copiedId}
+            animationDelay={index * 80}
+            onCopyUrl={handleCopyUrl}
+            onTogglePublic={handleTogglePublic}
+            onToggleTag={handleToggleTag}
+            onMoveToFolder={handleMoveToFolder}
+            onMoveTag={handleMoveTag}
+          />
+
       ))}
     </div>
   );

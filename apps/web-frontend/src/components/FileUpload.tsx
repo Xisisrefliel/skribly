@@ -25,7 +25,7 @@ interface FileUploadProps {
 
 export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: FileUploadProps) {
   const navigate = useNavigate();
-  const { invalidateTranscriptions } = useTranscriptionCache();
+  const { addTranscriptionToCache, invalidateTranscriptions } = useTranscriptionCache();
   const { billingStatus, isLoading: isBillingLoading } = useBillingStatus();
   const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
@@ -184,10 +184,15 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
       
       // Start transcription automatically
       await api.startTranscription(response.id, transcriptionMode);
-      
-      // Invalidate cache so the new transcription shows up when navigating back
-      invalidateTranscriptions();
-      
+
+      try {
+        const transcription = await api.getTranscription(response.id);
+        addTranscriptionToCache(transcription);
+      } catch (err) {
+        console.error('Failed to load new transcription:', err);
+        invalidateTranscriptions();
+      }
+
       if (onUploadComplete) {
         onUploadComplete(response.id);
       } else {
@@ -397,17 +402,18 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
           className="w-full neu-button-primary"
           size="lg"
         >
-          {isUploading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Uploading {files.length} {files.length === 1 ? 'file' : 'files'}...
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload & Generate Notes
-            </>
-          )}
+            {isUploading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Generating notes for {files.length} {files.length === 1 ? 'file' : 'files'}...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Generate Notes
+              </>
+            )}
+
         </Button>
       </CardContent>
     </Card>

@@ -120,6 +120,8 @@ Voice transcription often produces incomplete or garbled text. You MUST reconstr
 - Use square brackets for inline math: [ \frac{a}{b} \times 100 ]
 - Use LaTeX commands for fractions (\frac{numerator}{denominator}), operators (\times, \div, \pm, \mp), and functions
 - For text within math, use \text{text content}
+- Avoid LaTeX environments or alignment syntax: do NOT use \begin{align}, \begin{array}, \begin{cases}, \begin{tabular}, the & symbol, or \\ line breaks
+- Keep every formula to a single inline expression inside one pair of brackets
 - Examples:
   - Percentage calculation: [ \frac{106{,}50}{104}\times100 - 100 = 2{,}40% ]
   - Formula with text: [ \text{Rate} = \left(\frac{\text{new value}}{\text{old value}} \times 100\right) - 100 ]

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { FlashcardDeck } from '@lecture/shared';
 import { 
   ChevronLeft, 
@@ -48,6 +48,12 @@ export function FlashcardView({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [decks, setDecks] = useState<FlashcardDeck[]>(initialDecks || []);
   const [isLoadingDecks, setIsLoadingDecks] = useState(false);
+  const [flashcardHeightPx, setFlashcardHeightPx] = useState<number>(300);
+  const [flashcardWidthPx, setFlashcardWidthPx] = useState<number>(0);
+
+  const flashcardBoxRef = useRef<HTMLDivElement>(null);
+  const frontSizerRef = useRef<HTMLDivElement>(null);
+  const backSizerRef = useRef<HTMLDivElement>(null);
 
   // If initialDecks prop changes, update state
   useEffect(() => {
@@ -81,6 +87,45 @@ export function FlashcardView({
   const currentCard = deck.cards[currentIndex];
   // Calculate progress based on cards viewed/acted upon, or simply current position
   const progress = ((currentIndex + 1) / deck.cards.length) * 100;
+
+  // Track the visible card width so our offscreen measurers match line-wrapping exactly
+  useEffect(() => {
+    const el = flashcardBoxRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const nextWidth = Math.round(el.getBoundingClientRect().width);
+      setFlashcardWidthPx(nextWidth);
+    };
+
+    update();
+
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, []);
+
+  // Auto-size the flashcard height to fit BOTH sides, with a sensible viewport cap.
+  useLayoutEffect(() => {
+    if (flashcardWidthPx <= 0) return;
+
+    const measure = () => {
+      const frontH = frontSizerRef.current?.offsetHeight ?? 0;
+      const backH = backSizerRef.current?.offsetHeight ?? 0;
+      const desired = Math.max(frontH, backH, 250);
+      const max = Math.max(260, Math.min(Math.floor(window.innerHeight * 0.62), 720));
+      setFlashcardHeightPx(Math.min(desired, max));
+    };
+
+    const raf = window.requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+    };
+  }, [flashcardWidthPx, currentCard.front, currentCard.back, currentCard.category]);
 
   const handleFlip = () => {
     setIsFlipped(!isFlipped);
@@ -316,50 +361,114 @@ export function FlashcardView({
         <Progress value={progress} className="h-2 w-full" />
       </CardHeader>
       <CardContent className="space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
-        {/* Flashcard with 3D flip */}
-        <div
-          onClick={handleFlip}
-          onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? handleFlip() : null}
-          role="button"
-          tabIndex={0}
-          aria-label={isFlipped ? `Answer: ${currentCard.back}. Click to show question.` : `Question: ${currentCard.front}. Click to reveal answer.`}
-          className="perspective-1000 cursor-pointer outline-none rounded-xl"
-        >
-          <div className={`flashcard-inner min-h-[300px] sm:min-h-[250px] ${isFlipped ? 'flipped' : ''}`}>
-            {/* Front - Question */}
-            <div className="flashcard-face w-full min-h-[300px] sm:min-h-[250px] p-6 rounded-xl border-2 border-border/60 bg-linear-to-br from-card to-muted/40 flex flex-col items-center justify-center text-center">
-              <Badge variant="outline" className="mb-4 text-muted-foreground">
+        <div className="relative">
+          {/* Offscreen measurers (match width + styles so line-wrapping is identical) */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-[-9999px] top-0"
+            style={{ width: flashcardWidthPx > 0 ? `${flashcardWidthPx}px` : undefined }}
+          >
+            <div
+              ref={frontSizerRef}
+              className="w-full p-6 rounded-xl border-2 border-border/60 bg-linear-to-br from-card to-muted/40 grid grid-rows-[auto_1fr_auto] items-center text-center"
+            >
+              <Badge variant="outline" className="justify-self-center text-muted-foreground">
                 Question
               </Badge>
-              <p className="text-lg sm:text-xl font-medium leading-relaxed">
-                {currentCard.front}
-              </p>
-              {currentCard.category && (
-                <Badge 
-                  variant="outline" 
-                  className="mt-4 sm:hidden max-w-[90%] truncate" 
-                  title={currentCard.category}
-                >
-                  {currentCard.category}
-                </Badge>
-              )}
-              <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
+              <div className="min-h-0 w-full py-4">
+                <div className="flex flex-col items-center justify-center gap-4">
+                  <p className="text-lg sm:text-xl font-medium leading-relaxed px-1">
+                    {currentCard.front}
+                  </p>
+                  {currentCard.category && (
+                    <Badge
+                      variant="outline"
+                      className="sm:hidden max-w-[90%] truncate"
+                      title={currentCard.category}
+                    >
+                      {currentCard.category}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 justify-self-center text-sm text-muted-foreground pb-1">
                 <MousePointerClick className="w-4 h-4" />
                 <span>Click to reveal answer</span>
               </div>
             </div>
-            
-            {/* Back - Answer */}
-            <div className="flashcard-face flashcard-back w-full min-h-[300px] sm:min-h-[250px] p-6 rounded-xl border-2 border-primary/40 bg-linear-to-br from-primary/8 to-primary/15 flex flex-col items-center justify-center text-center">
-              <Badge className="mb-4 status-info">
+
+            <div
+              ref={backSizerRef}
+              className="w-full px-6 pt-8 pb-6 sm:pt-7 sm:pb-5 rounded-xl border-2 border-primary/40 bg-linear-to-br from-primary/8 to-primary/15 grid grid-rows-[auto_1fr_auto] items-center text-center"
+            >
+              <Badge className="justify-self-center status-info">
                 Answer
               </Badge>
-              <p className="text-lg sm:text-xl font-medium leading-relaxed">
-                {currentCard.back}
-              </p>
-              <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
+              <div className="min-h-0 w-full py-4">
+                <p className="text-lg sm:text-xl font-medium leading-relaxed px-1">
+                  {currentCard.back}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 justify-self-center text-sm text-muted-foreground pb-1">
                 <RotateCw className="w-4 h-4" />
                 <span>Click to flip back</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Flashcard with 3D flip */}
+          <div
+            ref={flashcardBoxRef}
+            onClick={handleFlip}
+            onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? handleFlip() : null}
+            role="button"
+            tabIndex={0}
+            aria-label={isFlipped ? `Answer: ${currentCard.back}. Click to show question.` : `Question: ${currentCard.front}. Click to reveal answer.`}
+            className="perspective-1000 cursor-pointer outline-none rounded-xl"
+            style={{ height: `${flashcardHeightPx}px` }}
+          >
+            <div className={`flashcard-inner h-full ${isFlipped ? 'flipped' : ''}`}>
+              {/* Front - Question */}
+              <div className="flashcard-face w-full h-full p-6 rounded-xl border-2 border-border/60 bg-linear-to-br from-card to-muted/40 grid grid-rows-[auto_1fr_auto] items-center text-center overflow-hidden">
+                <Badge variant="outline" className="justify-self-center text-muted-foreground">
+                  Question
+                </Badge>
+                <div className="min-h-0 w-full overflow-y-auto py-4">
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <p className="text-lg sm:text-xl font-medium leading-relaxed px-1">
+                      {currentCard.front}
+                    </p>
+                    {currentCard.category && (
+                      <Badge
+                        variant="outline"
+                        className="sm:hidden max-w-[90%] truncate"
+                        title={currentCard.category}
+                      >
+                        {currentCard.category}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 justify-self-center text-sm text-muted-foreground pb-1">
+                  <MousePointerClick className="w-4 h-4" />
+                  <span>Click to reveal answer</span>
+                </div>
+              </div>
+              
+              {/* Back - Answer */}
+              <div className="flashcard-face flashcard-back w-full h-full px-6 pt-8 pb-6 sm:pt-7 sm:pb-5 rounded-xl border-2 border-primary/40 bg-linear-to-br from-primary/8 to-primary/15 grid grid-rows-[auto_1fr_auto] items-center text-center overflow-hidden">
+                <Badge className="justify-self-center status-info">
+                  Answer
+                </Badge>
+                <div className="min-h-0 w-full flex items-center justify-center overflow-y-auto py-4">
+                  <p className="text-lg sm:text-xl font-medium leading-relaxed px-1">
+                    {currentCard.back}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 justify-self-center text-sm text-muted-foreground pb-1">
+                  <RotateCw className="w-4 h-4" />
+                  <span>Click to flip back</span>
+                </div>
               </div>
             </div>
           </div>

@@ -886,6 +886,16 @@ a:not([class]):hover {
   animation: pulse-soft 2s ease-in-out infinite;
 }
 
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1.5deg); }
+  75% { transform: rotate(1.5deg); }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.3s ease-in-out infinite;
+}
+
 /* ===== CARD HOVER EFFECTS ===== */
 .card-hover-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;

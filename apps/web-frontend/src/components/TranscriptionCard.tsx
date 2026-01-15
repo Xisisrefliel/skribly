@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import type { Transcription, Tag, Folder } from '@lecture/shared';
 import { AlertCircle, Clock, FolderIcon, Copy, Globe, Lock, Tag as TagIcon, Check, FolderInput, FolderX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,40 @@ import {
 } from '@/components/ui/context-menu';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+
+const extractHeadline = (structuredText: string): string | null => {
+  const match = structuredText.match(/^#{1,3}\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+};
+
+const stripMarkdown = (text: string): string => {
+  return text
+    .replace(/\[(.*?)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const extractSummary = (structuredText: string): string | null => {
+  const content = structuredText.replace(/^#{1,3}\s+.*$/gm, '').trim();
+  if (!content) return null;
+
+  const paragraph = content.split(/\n\s*\n/)[0]?.trim();
+  if (!paragraph) return null;
+
+  const plain = stripMarkdown(paragraph);
+  if (!plain) return null;
+
+  const sentenceMatch = plain.match(/^(.*?[.!?])(\s|$)/);
+  return (sentenceMatch ? sentenceMatch[1] : plain).trim();
+};
 
 function StatusBadge({ status }: { status: TranscriptionStatus }) {
   const styles = getStatusStyles(status);
@@ -56,6 +91,7 @@ export interface TranscriptionCardProps {
   onTogglePublic: (transcription: Transcription) => void;
   onToggleTag: (transcription: Transcription, tagId: string) => void;
   onMoveToFolder: (transcription: Transcription, folderId: string | null) => void;
+  onMoveTag: (sourceTranscriptionId: string, targetTranscriptionId: string, tagId: string) => void;
 }
 
 export function TranscriptionCard({
@@ -69,6 +105,7 @@ export function TranscriptionCard({
   onTogglePublic,
   onToggleTag,
   onMoveToFolder,
+  onMoveTag,
 }: TranscriptionCardProps) {
   const getFolderName = (folderIdToFind: string | null | undefined): string | null => {
     if (!folderIdToFind) return null;
@@ -192,6 +229,16 @@ export function TranscriptionCard({
   const folderName = getFolderName(transcription.folderId);
   const folderColor = getFolderColor(transcription.folderId);
   const showFolder = shouldShowFolderInfo();
+  const [dragHint, setDragHint] = useState<'add' | 'move' | null>(null);
+  const generatedHeadline = transcription.structuredText
+    ? extractHeadline(transcription.structuredText)
+    : null;
+  const summaryText = transcription.structuredText
+    ? extractSummary(transcription.structuredText)
+    : null;
+  const cardTitle = transcription.status === 'completed' && generatedHeadline
+    ? generatedHeadline
+    : transcription.title;
 
   return (
     <ContextMenu>
@@ -200,12 +247,62 @@ export function TranscriptionCard({
         style={{ animationDelay: `${animationDelay}ms` }}
         render={<Link to={`/transcription/${transcription.id}`} />}
       >
-        <Card className="h-full card-hover-lift group animate-fade-in-up overflow-hidden flex flex-col transition-all duration-200">
-          <CardHeader className="p-3 pb-2">
+        <Card
+          className={cn(
+            "relative h-full card-hover-lift group animate-fade-in-up overflow-hidden flex flex-col transition-all duration-200",
+            dragHint && "ring-1 ring-primary/50"
+          )}
+          onDragOver={(event) => {
+            const isTagDrop = event.dataTransfer.types.includes('application/x-lecture-tag');
+            const isMoveDrop = event.dataTransfer.types.includes('application/x-lecture-transcription-tag');
+
+            if (isTagDrop || isMoveDrop) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = isMoveDrop ? 'move' : 'copy';
+              setDragHint(isMoveDrop ? 'move' : 'add');
+            }
+          }}
+          onDragLeave={() => {
+            setDragHint(null);
+          }}
+          onDrop={(event) => {
+            const movePayload = event.dataTransfer.getData('application/x-lecture-transcription-tag');
+            const tagId = event.dataTransfer.getData('application/x-lecture-tag');
+
+            if (!movePayload && !tagId) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            setDragHint(null);
+
+            if (movePayload) {
+              try {
+                const parsed = JSON.parse(movePayload) as { sourceId: string; tagId: string };
+                if (parsed.tagId && parsed.sourceId && parsed.sourceId !== transcription.id) {
+                  onMoveTag(parsed.sourceId, transcription.id, parsed.tagId);
+                }
+              } catch (error) {
+                console.error('Failed to parse dragged tag payload:', error);
+              }
+              return;
+            }
+
+            const currentTagIds = transcription.tags?.map(tag => tag.id) || [];
+            if (tagId && !currentTagIds.includes(tagId)) {
+              onToggleTag(transcription, tagId);
+            }
+          }}
+        >
+          {dragHint && (
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl border border-dashed border-primary/60 bg-primary/10 backdrop-blur-sm flex items-center justify-center text-xs font-medium text-primary">
+              {dragHint === 'move' ? 'Drop to move tag' : 'Drop to add tag'}
+            </div>
+          )}
+          <CardHeader className="relative z-0 p-3 pb-2">
             {/* Title and status row */}
             <div className="flex items-start justify-between gap-2 mb-1.5">
               <CardTitle className="text-sm font-semibold line-clamp-2 group-hover:text-primary transition-colors duration-200 leading-snug">
-                {transcription.title}
+                {cardTitle}
               </CardTitle>
               <StatusBadge status={transcription.status as TranscriptionStatus} />
             </div>
@@ -229,7 +326,7 @@ export function TranscriptionCard({
             </div>
           </CardHeader>
           
-          <CardContent className="p-3 pt-0 space-y-2 flex-1">
+          <CardContent className="relative z-0 p-3 pt-0 space-y-2 flex-1">
             {/* Status-specific content */}
             {(transcription.status === 'processing' || transcription.status === 'structuring') && (
               <div className="space-y-1">
@@ -241,9 +338,9 @@ export function TranscriptionCard({
               </div>
             )}
             
-            {transcription.status === 'completed' && transcription.structuredText && (
+            {transcription.status === 'completed' && summaryText && (
               <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                {transcription.structuredText.replace(/^#\s+.*\n?/, '').slice(0, 100)}...
+                {summaryText}
               </p>
             )}
             
@@ -267,11 +364,34 @@ export function TranscriptionCard({
                 {transcription.tags.map((tag) => (
                   <span
                     key={tag.id}
-                    className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full"
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    onClick={() => onToggleTag(transcription, tag.id)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData(
+                        'application/x-lecture-transcription-tag',
+                        JSON.stringify({ sourceId: transcription.id, tagId: tag.id })
+                      );
+                      event.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={(event) => {
+                      if (event.dataTransfer.dropEffect === 'none') {
+                        onToggleTag(transcription, tag.id);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onToggleTag(transcription, tag.id);
+                      }
+                    }}
+                    className="inline-flex items-center text-[11px] font-medium px-2.5 py-1 rounded-full cursor-grab active:cursor-grabbing"
                     style={{
                       backgroundColor: `${tag.color}15`,
                       color: tag.color,
                     }}
+                    title="Click to remove, drag to move"
                   >
                     {tag.name}
                   </span>
@@ -282,7 +402,7 @@ export function TranscriptionCard({
           
           {/* Footer - Folder info */}
           {showFolder && folderName && (
-            <div className="px-3 py-1.5 border-t border-border/50 bg-muted/30 mt-auto">
+            <div className="relative z-0 px-3 py-1.5 border-t border-border/50 bg-muted/30 mt-auto">
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <FolderIcon 
                   className="h-3 w-3" 

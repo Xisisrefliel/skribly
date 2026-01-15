@@ -186,7 +186,7 @@ function CollapsibleHeading({
   onToggle, 
   collapsible 
 }: CollapsibleHeadingProps) {
-  const baseClasses = 'font-semibold text-foreground flex items-center gap-2 group scroll-mt-24';
+  const baseClasses = 'font-semibold text-foreground flex w-full min-w-0 items-center gap-2 group scroll-mt-24 relative';
   
   const levelClasses: Record<number, string> = {
     1: 'text-xl mt-6 mb-3 border-b border-border pb-2',
@@ -209,7 +209,7 @@ function CollapsibleHeading({
         <button
           onClick={onToggle}
           className={cn(
-            "collapsible-toggle p-0.5 -ml-6 rounded hover:bg-accent transition-colors focus:opacity-100",
+            "collapsible-toggle absolute -left-6 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent transition-colors focus:opacity-100",
             isCollapsed ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
           aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}

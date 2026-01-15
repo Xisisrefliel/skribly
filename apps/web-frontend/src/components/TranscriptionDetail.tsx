@@ -1,35 +1,45 @@
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import type { Transcription, Quiz, FlashcardDeck } from '@lecture/shared';
-import { 
-  ArrowLeft, 
-  Trash2, 
-  RefreshCw, 
-  Download, 
-  ClipboardCheck, 
-  Layers,
-  Loader2,
-  Clock,
-  Globe,
-  AlertCircle,
-  Eye,
-  FileText,
-  Share2,
-  Check,
-  Lock,
-  Unlock,
-  Music,
-  Video
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import { QuizView } from '@/components/QuizView';
-import { FlashcardView } from '@/components/FlashcardView';
-import { Markdown } from '@/components/Markdown';
-import { TableOfContents } from '@/components/TableOfContents';
+import type { Transcription, Quiz, FlashcardDeck, SourceFileDownload } from '@lecture/shared';
+  import { 
+    ArrowLeft, 
+    Trash2, 
+    RefreshCw, 
+    Download, 
+    ClipboardCheck, 
+    Layers,
+    Loader2,
+    Clock,
+    Globe,
+    AlertCircle,
+    Eye,
+    FileText,
+    Presentation,
+    Share2,
+    Check,
+    Lock,
+    Unlock,
+    Music,
+    Video,
+    MoreVertical
+  } from 'lucide-react';
+  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+  import { Button } from '@/components/ui/button';
+  import { Badge } from '@/components/ui/badge';
+  import { Progress } from '@/components/ui/progress';
+  import { Skeleton } from '@/components/ui/skeleton';
+  import { QuizView } from '@/components/QuizView';
+  import { FlashcardView } from '@/components/FlashcardView';
+  import { Markdown } from '@/components/Markdown';
+  import { TableOfContents } from '@/components/TableOfContents';
+  import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+  } from '@/components/ui/dropdown-menu';
+
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
@@ -180,8 +190,11 @@ export function TranscriptionDetail() {
   const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
-  const [isDownloadingSource, setIsDownloadingSource] = useState(false);
+  const [sourceFiles, setSourceFiles] = useState<SourceFileDownload[]>([]);
+  const [isLoadingSourceFiles, setIsLoadingSourceFiles] = useState(false);
+  const [activeSourceDownload, setActiveSourceDownload] = useState<string | null>(null);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isRecreatingNote, setIsRecreatingNote] = useState(false);
 
   const fetchTranscription = useCallback(async () => {
     if (!id) return;
@@ -230,6 +243,36 @@ export function TranscriptionDetail() {
 
     return () => clearInterval(interval);
   }, [transcriptionStatus, fetchTranscription]);
+
+  useEffect(() => {
+    if (!id || !transcription) return;
+
+    let isActive = true;
+
+    const loadSourceFiles = async () => {
+      setIsLoadingSourceFiles(true);
+      try {
+        const files = await api.getSourceDownloadUrls(id, !isAuthenticated && transcription.isPublic);
+        if (isActive) {
+          setSourceFiles(files);
+        }
+      } catch {
+        if (isActive) {
+          setSourceFiles([]);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingSourceFiles(false);
+        }
+      }
+    };
+
+    loadSourceFiles();
+
+    return () => {
+      isActive = false;
+    };
+  }, [id, transcription?.isPublic, isAuthenticated]);
 
   const handleTitleChange = useCallback(async (newTitle: string) => {
     if (!id || !transcription) return;
@@ -287,30 +330,42 @@ export function TranscriptionDetail() {
     );
   };
 
-  const handleDownloadSource = async () => {
-    if (!id || !transcription?.audioUrl) return;
+  const getSourceFileIcon = (file: SourceFileDownload) => {
+    switch (file.sourceType) {
+      case 'video':
+        return Video;
+      case 'audio':
+        return Music;
+      case 'pdf':
+        return FileText;
+      case 'ppt':
+      case 'pptx':
+        return Presentation;
+      default:
+        return FileText;
+    }
+  };
 
-    setIsDownloadingSource(true);
+  const handleDownloadSourceFile = async (file: SourceFileDownload) => {
+    if (!id || !transcription) return;
+
+    setActiveSourceDownload(file.originalName);
     try {
       const files = await api.getSourceDownloadUrls(id, !isAuthenticated && transcription.isPublic);
+      setSourceFiles(files);
 
-      if (files.length === 0) {
-        throw new Error('No source files available');
-      }
-
-      for (const file of files) {
-        const a = document.createElement('a');
-        const fallbackName = transcription.originalFileName?.trim() || `${transcription.title}.${getSourceExtension(transcription)}`;
-        a.href = file.url;
-        a.download = file.originalName?.trim() || fallbackName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
+      const latestFile = files.find((item) => item.originalName === file.originalName) ?? file;
+      const a = document.createElement('a');
+      const fallbackName = transcription.originalFileName?.trim() || `${transcription.title}.${getSourceExtension(transcription)}`;
+      a.href = latestFile.url;
+      a.download = latestFile.originalName?.trim() || fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download source file');
     } finally {
-      setIsDownloadingSource(false);
+      setActiveSourceDownload(null);
     }
   };
 
@@ -347,6 +402,20 @@ export function TranscriptionDetail() {
       fetchTranscription();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry');
+    }
+  };
+
+  const handleRecreateNote = async () => {
+    if (!id) return;
+    setIsRecreatingNote(true);
+    setError(null);
+    try {
+      await api.restructureTranscription(id);
+      fetchTranscription();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate notes');
+    } finally {
+      setIsRecreatingNote(false);
     }
   };
 
@@ -579,12 +648,8 @@ export function TranscriptionDetail() {
 
   const isCompleted = transcription.status === 'completed';
   const content = transcription.structuredText || transcription.transcriptionText || '';
-  const SourceIcon =
-    transcription.sourceType === 'video'
-      ? Video
-      : transcription.sourceType === 'audio'
-        ? Music
-        : FileText;
+  const showSourcePanel = isLoadingSourceFiles || sourceFiles.length > 0;
+  const sourcePanelTitle = sourceFiles.length > 1 ? 'Sources' : 'Source';
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in-up">
@@ -703,59 +768,76 @@ export function TranscriptionDetail() {
 
             {/* Right side - Management actions */}
             <div className="flex items-center gap-1.5">
-              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="neu-button"
+                    aria-label="Open actions menu"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={handleShare}
+                    title={transcription.isPublic ? 'Copy public shareable link' : 'Copy link (requires sign-in)'}
+                  >
+                    {isCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Share2 className="h-4 w-4" />
+                    )}
+                    <span>{isCopied ? 'Copied!' : 'Copy share link'}</span>
+                  </DropdownMenuItem>
 
-              <Button
-                onClick={handleShare}
-                variant="outline"
-                size="sm"
-                className="neu-button"
-                title={transcription.isPublic ? 'Copy public shareable link' : 'Copy link (requires sign-in)'}
-              >
-                {isCopied ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Share2 className="h-4 w-4" />
-                )}
-                <span className="hidden sm:inline ml-1.5">{isCopied ? 'Copied!' : 'Share'}</span>
-              </Button>
-
-              {isAuthenticated && (
-                <Button
-                  onClick={handleToggleVisibility}
-                  variant="outline"
-                  disabled={isUpdatingVisibility}
-                  size="sm"
-                  className="neu-button"
-                  title={transcription.isPublic ? 'Make private' : 'Make public'}
-                >
-                  {isUpdatingVisibility ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : transcription.isPublic ? (
-                    <Unlock className="h-4 w-4" />
-                  ) : (
-                    <Lock className="h-4 w-4" />
+                  {isAuthenticated && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={handleRecreateNote}
+                        disabled={isProcessing || isRecreatingNote || !transcription.transcriptionText}
+                      >
+                        {isRecreatingNote ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileText className="h-4 w-4" />
+                        )}
+                        <span>{isRecreatingNote ? 'Regenerating...' : 'Regenerate notes'}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleToggleVisibility}
+                        disabled={isUpdatingVisibility}
+                        title={transcription.isPublic ? 'Make private' : 'Make public'}
+                      >
+                        {isUpdatingVisibility ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : transcription.isPublic ? (
+                          <Unlock className="h-4 w-4" />
+                        ) : (
+                          <Lock className="h-4 w-4" />
+                        )}
+                        <span>{transcription.isPublic ? 'Make private' : 'Make public'}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                        variant="destructive"
+                        title="Delete transcription"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        <span>{isDeleting ? 'Deleting...' : 'Delete'}</span>
+                      </DropdownMenuItem>
+                    </>
                   )}
-                  <span className="hidden sm:inline ml-1.5">{transcription.isPublic ? 'Public' : 'Private'}</span>
-                </Button>
-              )}
-
-              {isAuthenticated && (
-                <Button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  size="sm"
-                  className="neu-button-destructive"
-                  title="Delete transcription"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                  <span className="hidden sm:inline ml-1.5">Delete</span>
-                </Button>
-              )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -835,58 +917,78 @@ export function TranscriptionDetail() {
         </main>
 
         {/* Right sidebar - Source file player (hidden on mobile) */}
-        {transcription.audioUrl && (
+        {showSourcePanel && (
           <aside className="hidden xl:block w-64 flex-shrink-0 sticky top-6 self-start">
             <Card className="!gap-3 p-4 neu-panel">
               <CardHeader className="p-0">
                 <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                  <SourceIcon className="h-4 w-4" />
-                  Source
+                  <FileText className="h-4 w-4" />
+                  {sourcePanelTitle}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                  <button
-                    onClick={handleDownloadSource}
-                    disabled={isDownloadingSource}
-                    className="relative group w-full aspect-square bg-muted/40 border-2 border-dashed border-muted-foreground/20 rounded-xl flex items-center justify-center cursor-pointer hover:bg-muted/60 hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    title="Download source media"
+              <CardContent className="p-0 space-y-4">
+                {isLoadingSourceFiles ? (
+                  <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading sources...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[calc(100vh-16rem)] overflow-y-auto pr-1">
+                    {sourceFiles.map((file) => {
+                      const Icon = getSourceFileIcon(file);
+                      const isDownloading = activeSourceDownload === file.originalName;
+
+                      return (
+                        <button
+                          key={`${file.originalName}-${file.sourceType}`}
+                          onClick={() => handleDownloadSourceFile(file)}
+                          disabled={!!activeSourceDownload}
+                          className="w-full flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/30 px-3 py-3 text-left hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={`Download ${file.originalName}`}
+                        >
+                          <span className="flex items-center gap-3 min-w-0">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/70 border border-border/50">
+                              <Icon className="h-5 w-5 text-primary" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-foreground truncate">
+                                {file.originalName}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">Download</span>
+                            </span>
+                          </span>
+                          {isDownloading ? (
+                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {isAuthenticated && (
+                  <Button
+                    onClick={handleDownloadPdf}
+                    disabled={isDownloadingPdf}
+                    size="sm"
+                    className="neu-button w-full"
+                    title={transcription.pdfKey ? 'Download structured PDF' : 'Generate PDF'}
                   >
-                    <SourceIcon className="h-24 w-24 text-muted-foreground/30 group-hover:text-primary/30 transition-colors duration-200" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 bg-background/10 backdrop-blur-[2px] rounded-xl">
-                      <div className="bg-card shadow-lg rounded-full p-4 mb-2 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-200">
-                        {isDownloadingSource ? (
-                          <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                        ) : (
-                          <Download className="h-6 w-6 text-primary" />
-                        )}
-                      </div>
-                      <span className="text-xs font-semibold text-foreground/90 bg-card/90 px-3 py-1 rounded-full shadow-sm transform translate-y-4 group-hover:translate-y-0 transition-transform duration-200 delay-75">
-                        {isDownloadingSource ? 'Downloading...' : 'Download'}
-                      </span>
-                    </div>
-                  </button>
-                  {isAuthenticated && (
-                    <Button
-                      onClick={handleDownloadPdf}
-                      disabled={isDownloadingPdf}
-                      size="sm"
-                      className="neu-button w-full mt-4"
-                      title={transcription.pdfKey ? 'Download structured PDF' : 'Generate PDF'}
-                    >
-                      {isDownloadingPdf ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                      <span className="ml-2">
-                        {isDownloadingPdf
-                          ? 'Preparing PDF...'
-                          : transcription.pdfKey
-                            ? 'Download PDF'
-                            : 'Generate PDF'}
-                      </span>
-                    </Button>
-                  )}
+                    {isDownloadingPdf ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <span className="ml-2">
+                      {isDownloadingPdf
+                        ? 'Preparing PDF...'
+                        : transcription.pdfKey
+                          ? 'Download PDF'
+                          : 'Generate PDF'}
+                    </span>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </aside>

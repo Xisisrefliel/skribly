@@ -1,11 +1,5 @@
-import { FolderSidebar } from '@/components/FolderSidebar';
-import { TagFilter } from '@/components/TagFilter';
-import { TranscriptionList } from '@/components/TranscriptionList';
-import { Button } from '@/components/ui/button';
-import { Drawer } from '@/components/ui/drawer';
-import { useAuth } from '@/contexts/AuthContext';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { SignInButton } from '@clerk/clerk-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRight,
   ClipboardCheck,
@@ -15,10 +9,14 @@ import {
   Mic,
   Plus
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-
-
+import { FolderSidebar } from '@/components/FolderSidebar';
+import { TagFilter } from '@/components/TagFilter';
+import { TranscriptionList } from '@/components/TranscriptionList';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export function HomePage() {
   useDocumentTitle('Notism - AI Study Assistant');
@@ -28,6 +26,80 @@ export function HomePage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPosition, setSidebarPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+  const folderButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!sidebarOpen) {
+      setSidebarPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (!folderButtonRef.current) return;
+
+      const rect = folderButtonRef.current.getBoundingClientRect();
+      const padding = 16;
+      const maxWidth = Math.min(360, window.innerWidth - padding * 2);
+      const left = Math.min(
+        Math.max(padding, rect.left - 8),
+        window.innerWidth - maxWidth - padding
+      );
+      const top = rect.bottom + 12;
+      const originX = rect.left + rect.width / 2 - left;
+      const originY = rect.top + rect.height / 2 - top;
+
+      setSidebarPosition({
+        left,
+        top,
+        width: maxWidth,
+        originX,
+        originY,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSidebarOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (!sidebarOpen) {
+      document.body.style.overflow = '';
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [sidebarOpen]);
 
   if (isLoading) {
     return (
@@ -39,11 +111,11 @@ export function HomePage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="relative overflow-hidden min-h-screen w-full">
+      <div className="relative overflow-hidden min-h-screen w-full flex flex-col">
         <div className="fixed inset-0 pointer-events-none opacity-80 -z-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(79,70,229,0.12), transparent 26%), radial-gradient(circle at 50% 80%, rgba(12,12,12,0.08), transparent 40%)' }} />
         <div className="fixed inset-0 pointer-events-none -z-10" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: '120px 120px' }} />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-16 md:py-24 flex flex-col gap-16 md:gap-20">
+        <div className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-16 md:py-24 flex flex-col gap-16 md:gap-20 flex-1">
           {/* Hero */}
           <div className="flex flex-col gap-10 md:gap-12 animate-fade-in-up">
             <div className="inline-flex items-center gap-3 self-start px-4 py-2 rounded-full neu-floating-card text-sm font-medium text-foreground/80 shadow-inner">
@@ -159,7 +231,7 @@ export function HomePage() {
           </div>
 
           {/* Footer */}
-          <footer className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-muted-foreground/80 text-sm pb-6">
+          <footer className="mt-auto flex flex-row flex-wrap items-center justify-between gap-3 text-muted-foreground/80 text-[0.7rem] sm:text-xs pb-6">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl neu-floating-card flex items-center justify-center">
                 <ClipboardCheck className="h-4 w-4 text-primary/80" />
@@ -201,24 +273,49 @@ export function HomePage() {
           />
         </div>
 
-        {/* Sidebar - Tablet/Mobile (slide-over drawer) */}
-        <Drawer
-          open={sidebarOpen}
-          onOpenChange={setSidebarOpen}
-          side="left"
-          title="Folders"
-        >
-          <div className="p-3">
-            <FolderSidebar
-              selectedFolderId={selectedFolderId}
-              onFolderSelect={(id) => {
-                setSelectedFolderId(id);
-                setSidebarOpen(false);
-              }}
-              compact
-            />
-          </div>
-        </Drawer>
+        {/* Sidebar - Tablet/Mobile (overlay panel) */}
+        <AnimatePresence>
+          {sidebarOpen && sidebarPosition && (
+            <>
+              <motion.div
+                className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSidebarOpen(false)}
+                aria-hidden="true"
+              />
+              <motion.div
+                className="fixed z-50"
+                style={{
+                  left: sidebarPosition.left,
+                  top: sidebarPosition.top,
+                  width: sidebarPosition.width,
+                  transformOrigin: `${sidebarPosition.originX}px ${sidebarPosition.originY}px`,
+                }}
+                initial={{ opacity: 0, scale: 0.35, y: -12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Folders"
+                id="folder-panel"
+              >
+                <div className="neu-floating-card border border-border/70 shadow-2xl p-3 max-h-[calc(100vh-8rem)] overflow-y-auto scrollbar-hide">
+                  <FolderSidebar
+                    selectedFolderId={selectedFolderId}
+                    onFolderSelect={(id) => {
+                      setSelectedFolderId(id);
+                      setSidebarOpen(false);
+                    }}
+                    compact
+                  />
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Main content */}
         <div className="flex-1 flex flex-col gap-4 min-w-0">
@@ -226,10 +323,13 @@ export function HomePage() {
           <div className="neu-floating-card flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4">
             <div className="flex items-center gap-3">
               <Button
+                ref={folderButtonRef}
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => setSidebarOpen((prev) => !prev)}
                 className="xl:hidden h-9 w-9 neu-button rounded-xl"
+                aria-expanded={sidebarOpen}
+                aria-controls="folder-panel"
               >
                 <FolderOpen className="h-4 w-4" />
               </Button>
