@@ -6,7 +6,6 @@ import {
   FolderOpen,
   Layers,
   Loader2,
-  Mic,
   Plus
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

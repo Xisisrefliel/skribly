@@ -32,6 +32,22 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
 
   const tagKey = tagIds?.join(',') ?? '';
   const cachedTranscriptions = getCachedTranscriptions(folderId, tagIds);
+  const matchesFilters = useCallback((transcription: Transcription) => {
+    if (folderId != null && transcription.folderId !== folderId) {
+      return false;
+    }
+
+    if (!tagIds || tagIds.length === 0) {
+      return true;
+    }
+
+    const transcriptionTagIds = transcription.tags?.map(tag => tag.id) ?? [];
+    return tagIds.some(tagId => transcriptionTagIds.includes(tagId));
+  }, [folderId, tagIds]);
+
+  const applyFilters = useCallback((items: Transcription[]) => (
+    items.filter(matchesFilters)
+  ), [matchesFilters]);
 
   const loadData = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {
@@ -103,18 +119,18 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
   const handleTogglePublic = async (transcription: Transcription) => {
     // Optimistic update (both local state and cache)
     const newIsPublic = !transcription.isPublic;
-    setTranscriptions(prev => prev.map(t => 
+    setTranscriptions(prev => applyFilters(prev.map(t => 
       t.id === transcription.id ? { ...t, isPublic: newIsPublic } : t
-    ));
+    )));
     updateTranscriptionInCache(transcription.id, { isPublic: newIsPublic });
     
     try {
       await api.updateTranscription(transcription.id, { isPublic: newIsPublic });
     } catch (err) {
       // Revert on error
-      setTranscriptions(prev => prev.map(t => 
+      setTranscriptions(prev => applyFilters(prev.map(t => 
         t.id === transcription.id ? { ...t, isPublic: transcription.isPublic } : t
-      ));
+      )));
       updateTranscriptionInCache(transcription.id, { isPublic: transcription.isPublic });
       console.error('Failed to update transcription:', err);
     }
@@ -137,18 +153,18 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
       : currentTags.filter(tag => tag.id !== tagId);
     
     // Optimistic update (both local state and cache)
-    setTranscriptions(prev => prev.map(t => 
+    setTranscriptions(prev => applyFilters(prev.map(t => 
       t.id === transcription.id ? { ...t, tags: newTags } : t
-    ));
+    )));
     updateTranscriptionInCache(transcription.id, { tags: newTags });
     
     try {
       await api.updateTranscription(transcription.id, { tagIds: newTagIds });
     } catch (err) {
       // Revert on error
-      setTranscriptions(prev => prev.map(t => 
+      setTranscriptions(prev => applyFilters(prev.map(t => 
         t.id === transcription.id ? { ...t, tags: transcription.tags } : t
-      ));
+      )));
       updateTranscriptionInCache(transcription.id, { tags: transcription.tags });
       console.error('Failed to update tags:', err);
     }
@@ -158,11 +174,11 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
     const newFolderId = typeof targetFolderId === 'string' ? targetFolderId : undefined;
     
     // Optimistic update (both local state and cache)
-    setTranscriptions(prev =>
+    setTranscriptions(prev => applyFilters(
       prev.map(t =>
         t.id === transcription.id ? { ...t, folderId: newFolderId } : t
       )
-    );
+    ));
     updateTranscriptionInCache(transcription.id, { folderId: newFolderId });
 
     try {
@@ -172,11 +188,11 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
       const originalFolderId = typeof transcription.folderId === 'string'
         ? transcription.folderId
         : undefined;
-      setTranscriptions(prev =>
+      setTranscriptions(prev => applyFilters(
         prev.map(t =>
           t.id === transcription.id ? { ...t, folderId: originalFolderId } : t
         )
-      );
+      ));
       updateTranscriptionInCache(transcription.id, { folderId: originalFolderId });
       console.error('Failed to move to folder:', err);
     }
@@ -206,7 +222,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
       ? (targetTranscription.tags || [])
       : [...(targetTranscription.tags || []), ...(tagToMove ? [tagToMove] : [])];
 
-    setTranscriptions(prev => prev.map(t => {
+    setTranscriptions(prev => applyFilters(prev.map(t => {
       if (t.id === sourceTranscriptionId) {
         return { ...t, tags: newSourceTags };
       }
@@ -214,7 +230,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
         return { ...t, tags: newTargetTags };
       }
       return t;
-    }));
+    })));
 
     updateTranscriptionInCache(sourceTranscriptionId, { tags: newSourceTags });
     updateTranscriptionInCache(targetTranscriptionId, { tags: newTargetTags });
@@ -225,7 +241,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
         api.updateTranscription(targetTranscriptionId, { tagIds: newTargetTagIds }),
       ]);
     } catch (err) {
-      setTranscriptions(prev => prev.map(t => {
+      setTranscriptions(prev => applyFilters(prev.map(t => {
         if (t.id === sourceTranscriptionId) {
           return { ...t, tags: sourceTranscription.tags };
         }
@@ -233,7 +249,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
           return { ...t, tags: targetTranscription.tags };
         }
         return t;
-      }));
+      })));
 
       updateTranscriptionInCache(sourceTranscriptionId, { tags: sourceTranscription.tags });
       updateTranscriptionInCache(targetTranscriptionId, { tags: targetTranscription.tags });

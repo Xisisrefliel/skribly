@@ -3,6 +3,8 @@ import type { Transcription, Tag, Folder } from '@lecture/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
+declare const __BUILD_ID__: string;
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -12,6 +14,35 @@ interface CacheEntry<T> {
 const TRANSCRIPTIONS_STORAGE_KEY = 'lecture:transcriptions-cache:v1';
 const TAGS_STORAGE_KEY = 'lecture:tags-cache:v1';
 const FOLDERS_STORAGE_KEY = 'lecture:folders-cache:v1';
+const CACHE_BUILD_ID_KEY = 'lecture:cache-build-id';
+const CURRENT_BUILD_ID = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
+
+const clearCacheStorage = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(TRANSCRIPTIONS_STORAGE_KEY);
+  window.localStorage.removeItem(TAGS_STORAGE_KEY);
+  window.localStorage.removeItem(FOLDERS_STORAGE_KEY);
+};
+
+const shouldInvalidateCache = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const storedBuildId = window.localStorage.getItem(CACHE_BUILD_ID_KEY);
+  return storedBuildId !== CURRENT_BUILD_ID;
+};
+
+const setCacheBuildId = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(CACHE_BUILD_ID_KEY, CURRENT_BUILD_ID);
+};
 
 const loadStoredTranscriptions = (): Record<string, TranscriptionCacheEntry> => {
   if (typeof window === 'undefined') {
@@ -19,6 +50,12 @@ const loadStoredTranscriptions = (): Record<string, TranscriptionCacheEntry> => 
   }
 
   try {
+    if (shouldInvalidateCache()) {
+      clearCacheStorage();
+      setCacheBuildId();
+      return {};
+    }
+
     const stored = window.localStorage.getItem(TRANSCRIPTIONS_STORAGE_KEY);
     if (!stored) {
       return {};
@@ -37,6 +74,12 @@ const loadStoredTags = (): { data: Tag[]; loaded: boolean } => {
   }
 
   try {
+    if (shouldInvalidateCache()) {
+      clearCacheStorage();
+      setCacheBuildId();
+      return { data: [], loaded: false };
+    }
+
     const stored = window.localStorage.getItem(TAGS_STORAGE_KEY);
     if (!stored) {
       return { data: [], loaded: false };
@@ -55,6 +98,12 @@ const loadStoredFolders = (): { data: Folder[]; loaded: boolean } => {
   }
 
   try {
+    if (shouldInvalidateCache()) {
+      clearCacheStorage();
+      setCacheBuildId();
+      return { data: [], loaded: false };
+    }
+
     const stored = window.localStorage.getItem(FOLDERS_STORAGE_KEY);
     if (!stored) {
       return { data: [], loaded: false };
@@ -125,6 +174,9 @@ const normalizeTagIds = (tagIds?: string[]): string[] | undefined => {
 const sortTranscriptionsByCreatedAt = (data: Transcription[]): Transcription[] =>
   [...data].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+const isActiveTranscription = (transcription: Transcription): boolean =>
+  transcription.status === 'processing' || transcription.status === 'structuring';
+
 const transcriptionMatchesFilters = (
   transcription: Transcription,
   folderId?: string | null,
@@ -149,6 +201,20 @@ function getCacheKey(folderId?: string | null, tagIds?: string[]): string {
   return `${folderPart}:${tagsPart}`;
 }
 
+const sanitizeTranscriptionForCache = (transcription: Transcription): Transcription => ({
+  ...transcription,
+  transcriptionText: null,
+  structuredText: null,
+});
+
+const sanitizeTranscriptionsForCache = (transcriptions: Transcription[]): Transcription[] =>
+  transcriptions.map(sanitizeTranscriptionForCache);
+
+const sanitizeTranscriptionUpdates = (updates: Partial<Transcription>): Partial<Transcription> => {
+  const { transcriptionText: _transcriptionText, structuredText: _structuredText, ...rest } = updates;
+  return rest;
+};
+
 export function TranscriptionCacheProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, getToken } = useAuth();
 
@@ -170,6 +236,14 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   const [folders, setFolders] = useState<Folder[]>(storedFolders.data);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [foldersLoaded, setFoldersLoaded] = useState(storedFolders.loaded);
+
+  useEffect(() => {
+    setCacheBuildId();
+  }, []);
+
+  const hasActiveTranscriptions = Object.values(transcriptions).some(entry =>
+    entry.data.some(isActiveTranscription)
+  );
 
   const getCachedTranscriptions = useCallback((folderId?: string | null, tagIds?: string[]): Transcription[] | null => {
     const cacheKey = getCacheKey(folderId, tagIds);
@@ -240,11 +314,12 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
       const normalizedTags = normalizeTagIds(tagIds);
       const folderFilter = folderId === null ? undefined : folderId;
       const data = await api.getTranscriptions(folderFilter, normalizedTags);
+      const cacheData = sanitizeTranscriptionsForCache(data);
 
       setTranscriptions(prev => ({
         ...prev,
         [cacheKey]: {
-          data,
+          data: cacheData,
           timestamp: Date.now(),
           key: cacheKey,
           folderId,
@@ -348,11 +423,8 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     setFolders([]);
     setFoldersLoaded(false);
 
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(TRANSCRIPTIONS_STORAGE_KEY);
-      window.localStorage.removeItem(TAGS_STORAGE_KEY);
-      window.localStorage.removeItem(FOLDERS_STORAGE_KEY);
-    }
+    clearCacheStorage();
+    setCacheBuildId();
   }, []);
 
   const invalidateTranscriptions = useCallback((folderId?: string | null, tagIds?: string[]) => {
@@ -374,6 +446,8 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   }, []);
 
   const updateTranscriptionInCache = useCallback((id: string, updates: Partial<Transcription>) => {
+    const sanitizedUpdates = sanitizeTranscriptionUpdates(updates);
+
     setTranscriptionDetails(prev => {
       const existing = prev[id];
       if (!existing) {
@@ -406,7 +480,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
               return transcription;
             }
 
-            const merged = { ...transcription, ...updates };
+            const merged = { ...transcription, ...sanitizedUpdates };
             updatedTranscription = merged;
             return merged;
           });
@@ -441,6 +515,8 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   }, []);
 
   const addTranscriptionToCache = useCallback((transcription: Transcription) => {
+    const sanitizedTranscription = sanitizeTranscriptionForCache(transcription);
+
     setTranscriptions(prev => {
       const keys = Object.keys(prev);
       if (keys.length === 0) {
@@ -450,14 +526,14 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
       return Object.fromEntries(
         keys.map(key => {
           const entry = prev[key];
-          const matches = transcriptionMatchesFilters(transcription, entry.folderId, entry.tagIds);
-          const exists = entry.data.some(item => item.id === transcription.id);
+          const matches = transcriptionMatchesFilters(sanitizedTranscription, entry.folderId, entry.tagIds);
+          const exists = entry.data.some(item => item.id === sanitizedTranscription.id);
 
           if (!matches || exists) {
             return [key, entry];
           }
 
-          const data = sortTranscriptionsByCreatedAt([...entry.data, transcription]);
+          const data = sortTranscriptionsByCreatedAt([...entry.data, sanitizedTranscription]);
           return [key, { ...entry, data }];
         })
       ) as Record<string, TranscriptionCacheEntry>;
@@ -493,7 +569,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !hasActiveTranscriptions) {
       return;
     }
 
@@ -593,7 +669,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
         window.clearTimeout(reconnectTimeout);
       }
     };
-  }, [getToken, isAuthenticated, refreshTranscriptionById, updateTranscriptionInCache]);
+  }, [getToken, hasActiveTranscriptions, isAuthenticated, refreshTranscriptionById, updateTranscriptionInCache]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -601,6 +677,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     }
 
     try {
+      setCacheBuildId();
       window.localStorage.setItem(TRANSCRIPTIONS_STORAGE_KEY, JSON.stringify(transcriptions));
     } catch {
       // Ignore storage errors
@@ -613,6 +690,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     }
 
     try {
+      setCacheBuildId();
       window.localStorage.setItem(TAGS_STORAGE_KEY, JSON.stringify(tags));
     } catch {
       // Ignore storage errors
@@ -625,6 +703,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     }
 
     try {
+      setCacheBuildId();
       window.localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
     } catch {
       // Ignore storage errors
