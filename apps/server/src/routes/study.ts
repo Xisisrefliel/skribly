@@ -78,7 +78,17 @@ router.post('/transcription/:id/quiz', async (req: Request, res: Response): Prom
 
     // Generate new quiz questions with language support
     const language = transcription.detectedLanguage || 'Unknown';
-    const questions = await llmService.generateQuiz(content, transcription.title, questionCount, language);
+    const questions = await llmService.generateQuiz(
+      content,
+      transcription.title,
+      questionCount,
+      language,
+      {
+        userId,
+        transcriptionId: id,
+        step: 'quiz',
+      }
+    );
 
     const quiz: Quiz = {
       id: uuidv4(),
@@ -179,7 +189,17 @@ router.post('/transcription/:id/flashcards', async (req: Request, res: Response)
 
     // Generate new flashcards with language support
     const language = transcription.detectedLanguage || 'Unknown';
-    const cards = await llmService.generateFlashcards(content, transcription.title, cardCount, language);
+    const cards = await llmService.generateFlashcards(
+      content,
+      transcription.title,
+      cardCount,
+      language,
+      {
+        userId,
+        transcriptionId: id,
+        step: 'flashcards',
+      }
+    );
 
     const deck: FlashcardDeck = {
       id: uuidv4(),

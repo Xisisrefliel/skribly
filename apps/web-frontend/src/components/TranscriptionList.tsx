@@ -53,8 +53,9 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
   }, [fetchTranscriptions, folderId, invalidateTranscriptions, onEmpty, tagIds]);
 
   useEffect(() => {
-    if (cachedTranscriptions !== null) {
-      setTranscriptions(cachedTranscriptions);
+    const initialCache = getCachedTranscriptions(folderId, tagIds);
+    if (initialCache !== null) {
+      setTranscriptions(initialCache);
       setIsLoading(false);
     } else {
       setTranscriptions([]);
@@ -64,21 +65,32 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
     loadData();
     fetchTags();
     fetchFolders();
-  }, [cachedTranscriptions, fetchFolders, fetchTags, folderId, loadData, tagKey]);
+  }, [fetchFolders, fetchTags, folderId, loadData, tagKey]);
 
   useEffect(() => {
-    // Poll for updates every 5 seconds if there are processing items
-    const interval = setInterval(async () => {
-      const hasProcessing = transcriptions.some(
-        (t) => t.status === 'processing' || t.status === 'structuring' || t.status === 'pending'
-      );
-      if (hasProcessing) {
-        // Force refresh when polling for processing items
-        loadData(true);
-      }
-    }, 5000);
+    if (cachedTranscriptions !== null) {
+      setTranscriptions(cachedTranscriptions);
+    }
+  }, [cachedTranscriptions]);
 
-    return () => clearInterval(interval);
+  useEffect(() => {
+    const hasActiveTranscriptions = transcriptions.some(transcription =>
+      transcription.status === 'pending' ||
+      transcription.status === 'processing' ||
+      transcription.status === 'structuring'
+    );
+
+    if (!hasActiveTranscriptions) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      loadData(true);
+    }, 12000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
   }, [loadData, transcriptions]);
 
   const handleCopyUrl = async (transcription: Transcription) => {
@@ -229,6 +241,46 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
     }
   };
 
+  const handleCancelTranscription = async (transcription: Transcription) => {
+    if (
+      transcription.status === 'completed' ||
+      transcription.status === 'error' ||
+      transcription.status === 'canceled'
+    ) {
+      return;
+    }
+
+    const previousStatus = transcription.status;
+    const previousProgress = transcription.progress;
+    const previousError = transcription.errorMessage;
+
+    setTranscriptions(prev => prev.map(t =>
+      t.id === transcription.id
+        ? { ...t, status: 'canceled', errorMessage: null }
+        : t
+    ));
+    updateTranscriptionInCache(transcription.id, {
+      status: 'canceled',
+      errorMessage: null,
+    });
+
+    try {
+      await api.cancelTranscription(transcription.id);
+    } catch (err) {
+      setTranscriptions(prev => prev.map(t =>
+        t.id === transcription.id
+          ? { ...t, status: previousStatus, progress: previousProgress, errorMessage: previousError }
+          : t
+      ));
+      updateTranscriptionInCache(transcription.id, {
+        status: previousStatus,
+        progress: previousProgress,
+        errorMessage: previousError,
+      });
+      setError(err instanceof Error ? err.message : 'Failed to cancel transcription');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -305,6 +357,7 @@ export function TranscriptionList({ onEmpty, folderId, tagIds }: TranscriptionLi
             onToggleTag={handleToggleTag}
             onMoveToFolder={handleMoveToFolder}
             onMoveTag={handleMoveTag}
+            onCancelTranscription={handleCancelTranscription}
           />
 
       ))}

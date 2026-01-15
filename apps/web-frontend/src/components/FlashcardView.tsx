@@ -349,7 +349,7 @@ export function FlashcardView({
               {currentCard.category && (
                 <Badge 
                   variant="outline" 
-                  className="hidden sm:inline-flex shrink-0 max-w-[150px] truncate" 
+                  className="hidden sm:inline-flex shrink-0 max-w-[150px] whitespace-normal text-center leading-tight"
                   title={currentCard.category}
                 >
                   {currentCard.category}
@@ -381,13 +381,14 @@ export function FlashcardView({
                     {currentCard.front}
                   </p>
                   {currentCard.category && (
-                    <Badge
-                      variant="outline"
-                      className="sm:hidden max-w-[90%] truncate"
-                      title={currentCard.category}
-                    >
-                      {currentCard.category}
-                    </Badge>
+                      <Badge
+                        variant="outline"
+                        className="sm:hidden max-w-[90%] whitespace-normal text-center leading-tight"
+                        title={currentCard.category}
+                      >
+                        {currentCard.category}
+                      </Badge>
+
                   )}
                 </div>
               </div>
@@ -441,7 +442,7 @@ export function FlashcardView({
                     {currentCard.category && (
                       <Badge
                         variant="outline"
-                        className="sm:hidden max-w-[90%] truncate"
+                        className="sm:hidden max-w-[90%] whitespace-normal text-center leading-tight"
                         title={currentCard.category}
                       >
                         {currentCard.category}

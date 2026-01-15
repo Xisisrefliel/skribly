@@ -205,7 +205,16 @@ class ApiClient {
     });
   }
 
-  async updateTranscription(id: string, data: { title?: string; isPublic?: boolean; folderId?: string | null; tagIds?: string[] }): Promise<void> {
+  async cancelTranscription(id: string): Promise<TranscribeResponse> {
+    return this.request<TranscribeResponse>(`/api/transcription/${id}/cancel`, {
+      method: 'POST',
+    });
+  }
+
+  async updateTranscription(
+    id: string,
+    data: { title?: string; isPublic?: boolean; folderId?: string | null; tagIds?: string[] }
+  ): Promise<void> {
     await this.request(`/api/transcription/${id}`, {
       method: 'PATCH',
       headers: {

@@ -42,6 +42,11 @@ export interface TranscriptionResult {
     end: number;
     text: string;
   }>;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 export interface TranscriptionOptions {
@@ -197,6 +202,27 @@ async function transcribeWithOpenAI(
     
     const transcription = await openai.audio.transcriptions.create(requestParams);
 
+    interface TranscriptionUsage {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+    }
+
+    const usage = 'usage' in transcription
+      ? (transcription as { usage?: TranscriptionUsage }).usage
+      : undefined;
+
+    const normalizedUsage = usage
+      ? {
+        inputTokens: usage.input_tokens ?? usage.inputTokens,
+        outputTokens: usage.output_tokens ?? usage.outputTokens,
+        totalTokens: usage.total_tokens ?? usage.totalTokens,
+      }
+      : undefined;
+
     // For gpt-4o models, we don't get segments/duration
     // For whisper-1 with verbose_json, we get full details
     let duration = 0;
@@ -221,6 +247,7 @@ async function transcribeWithOpenAI(
       model,
       provider: 'openai' as const,
       segments,
+      usage: normalizedUsage,
     };
   });
 }

@@ -1,6 +1,8 @@
 import Groq from 'groq-sdk';
-import type { QuizQuestion, Flashcard } from '@lecture/shared';
 import { v4 as uuidv4 } from 'uuid';
+import type { Flashcard, QuizQuestion } from '@lecture/shared';
+import type { TokenUsageInput, UsageContext } from './usage.js';
+import { usageService } from './usage.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!;
 
@@ -190,13 +192,31 @@ const normalizeLanguage = (language?: string | null): string | null => {
   return trimmed;
 };
 
+interface CompletionUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+const resolveTokenUsage = (usage?: CompletionUsage): TokenUsageInput => ({
+  inputTokens: usage?.prompt_tokens ?? usage?.input_tokens ?? null,
+  outputTokens: usage?.completion_tokens ?? usage?.output_tokens ?? null,
+  totalTokens: usage?.total_tokens ?? null,
+});
+
 export const llmService = {
   /**
    * Structure a raw transcription into organized notes using LLM
    * @param rawText - The raw transcription text
    * @param title - The lecture title for context
    */
-  async structureTranscription(rawText: string, title: string): Promise<StructuringResult> {
+  async structureTranscription(
+    rawText: string,
+    title: string,
+    usageContext?: UsageContext
+  ): Promise<StructuringResult> {
     // Detect language for better error correction
     const detectedLanguage = detectLanguage(rawText);
     console.log(`Structuring transcription: ${title}, length: ${rawText.length} chars, language: ${detectedLanguage}`);
@@ -228,6 +248,15 @@ export const llmService = {
         max_tokens: 16000,
       });
 
+      if (usageContext) {
+        await usageService.recordTokenUsage({
+          context: usageContext,
+          provider: 'groq',
+          model: 'openai/gpt-oss-120b',
+          usage: resolveTokenUsage(completion.usage),
+        });
+      }
+
       const structuredText = completion.choices[0]?.message?.content || '';
 
       if (!structuredText) {
@@ -246,7 +275,13 @@ export const llmService = {
   /**
    * Generate quiz questions from lecture content
    */
-  async generateQuiz(content: string, title: string, questionCount: number = 10, language: string = 'English'): Promise<QuizQuestion[]> {
+  async generateQuiz(
+    content: string,
+    title: string,
+    questionCount: number = 10,
+    language: string = 'English',
+    usageContext?: UsageContext
+  ): Promise<QuizQuestion[]> {
     const inferredLanguage = normalizeLanguage(detectLanguage(content));
     const resolvedLanguage = inferredLanguage ?? normalizeLanguage(language);
     const languageLabel = resolvedLanguage ?? 'the same language as the content';
@@ -298,6 +333,15 @@ ${content.substring(0, 50000)}`;
         max_tokens: 8000,
       });
 
+      if (usageContext) {
+        await usageService.recordTokenUsage({
+          context: usageContext,
+          provider: 'groq',
+          model: 'llama-3.3-70b-versatile',
+          usage: resolveTokenUsage(completion.usage),
+        });
+      }
+
       const responseText = completion.choices[0]?.message?.content || '';
       
       // Parse JSON from response
@@ -328,7 +372,13 @@ ${content.substring(0, 50000)}`;
   /**
    * Generate flashcards from lecture content
    */
-  async generateFlashcards(content: string, title: string, cardCount: number = 20, language: string = 'English'): Promise<Flashcard[]> {
+  async generateFlashcards(
+    content: string,
+    title: string,
+    cardCount: number = 20,
+    language: string = 'English',
+    usageContext?: UsageContext
+  ): Promise<Flashcard[]> {
     const inferredLanguage = normalizeLanguage(detectLanguage(content));
     const resolvedLanguage = inferredLanguage ?? normalizeLanguage(language);
     const languageLabel = resolvedLanguage ?? 'the same language as the content';
@@ -381,6 +431,15 @@ ${content.substring(0, 50000)}`;
         temperature: 0.5,
         max_tokens: 8000,
       });
+
+      if (usageContext) {
+        await usageService.recordTokenUsage({
+          context: usageContext,
+          provider: 'groq',
+          model: 'llama-3.3-70b-versatile',
+          usage: resolveTokenUsage(completion.usage),
+        });
+      }
 
       const responseText = completion.choices[0]?.message?.content || '';
       

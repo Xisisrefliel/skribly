@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import type { Transcription, Tag, Folder } from '@lecture/shared';
+import { useState, type MouseEvent } from 'react';
 import { AlertCircle, Clock, FolderIcon, Copy, Globe, Lock, Tag as TagIcon, Check, FolderInput, FolderX } from 'lucide-react';
+import type { Transcription, Tag, Folder } from '@lecture/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   ContextMenu,
@@ -54,6 +55,26 @@ const extractSummary = (structuredText: string): string | null => {
   return (sentenceMatch ? sentenceMatch[1] : plain).trim();
 };
 
+const getProgressLabel = (status: TranscriptionStatus, progressValue: number): string => {
+  if (status === 'pending') {
+    return 'Queued for processing';
+  }
+
+  if (status === 'structuring') {
+    return progressValue >= 95 ? 'Finalizing notes' : 'Structuring notes';
+  }
+
+  if (status === 'processing') {
+    if (progressValue < 5) return 'Preparing upload';
+    if (progressValue < 15) return 'Preparing audio';
+    if (progressValue < 85) return 'Transcribing audio';
+    if (progressValue < 90) return 'Wrapping up transcript';
+    return 'Final review';
+  }
+
+  return 'Processing';
+};
+
 function StatusBadge({ status }: { status: TranscriptionStatus }) {
   const styles = getStatusStyles(status);
   
@@ -62,6 +83,7 @@ function StatusBadge({ status }: { status: TranscriptionStatus }) {
     processing: 'status-info',
     structuring: 'status-purple',
     completed: 'status-success',
+    canceled: 'status-warning',
     error: '',
   }[status];
 
@@ -92,6 +114,7 @@ export interface TranscriptionCardProps {
   onToggleTag: (transcription: Transcription, tagId: string) => void;
   onMoveToFolder: (transcription: Transcription, folderId: string | null) => void;
   onMoveTag: (sourceTranscriptionId: string, targetTranscriptionId: string, tagId: string) => void;
+  onCancelTranscription: (transcription: Transcription) => void;
 }
 
 export function TranscriptionCard({
@@ -106,6 +129,7 @@ export function TranscriptionCard({
   onToggleTag,
   onMoveToFolder,
   onMoveTag,
+  onCancelTranscription,
 }: TranscriptionCardProps) {
   const getFolderName = (folderIdToFind: string | null | undefined): string | null => {
     if (!folderIdToFind) return null;
@@ -239,6 +263,12 @@ export function TranscriptionCard({
   const cardTitle = transcription.status === 'completed' && generatedHeadline
     ? generatedHeadline
     : transcription.title;
+  const progressValue = Math.round((transcription.progress ?? 0) * 100);
+  const showProgress =
+    transcription.status === 'pending' ||
+    transcription.status === 'processing' ||
+    transcription.status === 'structuring';
+  const progressLabel = getProgressLabel(transcription.status as TranscriptionStatus, progressValue);
 
   return (
     <ContextMenu>
@@ -294,7 +324,7 @@ export function TranscriptionCard({
           }}
         >
           {dragHint && (
-            <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl border border-dashed border-primary/60 bg-primary/10 backdrop-blur-sm flex items-center justify-center text-xs font-medium text-primary">
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-xl border border-dashed border-primary/60 bg-primary/10 backdrop-blur-sm flex items-center justify-center text-xs font-medium text-primary">
               {dragHint === 'move' ? 'Drop to move tag' : 'Drop to add tag'}
             </div>
           )}
@@ -328,13 +358,30 @@ export function TranscriptionCard({
           
           <CardContent className="relative z-0 p-3 pt-0 space-y-2 flex-1">
             {/* Status-specific content */}
-            {(transcription.status === 'processing' || transcription.status === 'structuring') && (
-              <div className="space-y-1">
-                <Progress value={transcription.progress * 100} className="h-1" />
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-info animate-pulse-soft" />
-                  {transcription.status === 'processing' ? 'Transcribing' : 'Structuring'}... {Math.round(transcription.progress * 100)}%
-                </p>
+            {showProgress && (
+              <div className="space-y-2">
+                <Progress value={progressValue} className="h-1.5" />
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-info animate-pulse-soft" />
+                    <span>{progressLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="font-semibold text-foreground">{progressValue}%</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] neu-button-destructive"
+                      onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onCancelTranscription(transcription);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
             
@@ -355,6 +402,13 @@ export function TranscriptionCard({
               <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
                 Waiting to start...
+              </p>
+            )}
+
+            {transcription.status === 'canceled' && (
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-warning" />
+                Canceled by you
               </p>
             )}
             

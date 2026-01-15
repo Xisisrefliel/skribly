@@ -49,7 +49,7 @@ export function formatFileSize(bytes: number): string {
 /**
  * Status types for transcriptions
  */
-export type TranscriptionStatus = 'pending' | 'processing' | 'structuring' | 'completed' | 'error';
+export type TranscriptionStatus = 'pending' | 'processing' | 'structuring' | 'completed' | 'canceled' | 'error';
 
 /**
  * Get status-specific styling classes
@@ -89,6 +89,13 @@ export function getStatusStyles(status: TranscriptionStatus): {
         text: 'text-white',
         border: 'border-status-success',
         label: 'Completed'
+      };
+    case 'canceled':
+      return {
+        bg: 'bg-status-warning',
+        text: 'text-white',
+        border: 'border-status-warning',
+        label: 'Canceled'
       };
     case 'error':
       return {

@@ -34,7 +34,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const maxFileSizeBytes = 100 * 1024 * 1024;
+  const maxFileSizeBytes = 500 * 1024 * 1024;
   const maxBatchFiles = 5;
 
   const acceptedMimeTypes = [
@@ -104,7 +104,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
     }
 
     if (oversizedFiles.length > 0) {
-      setError(`Files over 100MB are not supported: ${oversizedFiles.join(', ')}.`);
+      setError(`Files over 500MB are not supported: ${oversizedFiles.join(', ')}.`);
     }
 
     if (validFiles.length > 0) {

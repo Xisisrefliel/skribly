@@ -13,7 +13,7 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB max file size
+    fileSize: 500 * 1024 * 1024, // 500MB max file size
   },
   fileFilter: (_req, file, cb) => {
     // Accept audio, video, and document files

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { Transcription, Tag, Folder } from '@lecture/shared';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CacheEntry<T> {
   data: T;
@@ -106,6 +107,9 @@ interface TranscriptionCacheContextType {
   invalidateTranscriptions: (folderId?: string | null, tagIds?: string[]) => void;
   updateTranscriptionInCache: (id: string, updates: Partial<Transcription>) => void;
   addTranscriptionToCache: (transcription: Transcription) => void;
+  getCachedTranscription: (id: string, options?: { includeListCache?: boolean }) => Transcription | null;
+  cacheTranscriptionDetail: (transcription: Transcription) => void;
+  invalidateTranscriptionDetail: (id: string) => void;
 }
 
 const TranscriptionCacheContext = createContext<TranscriptionCacheContextType | undefined>(undefined);
@@ -146,10 +150,13 @@ function getCacheKey(folderId?: string | null, tagIds?: string[]): string {
 }
 
 export function TranscriptionCacheProvider({ children }: { children: ReactNode }) {
+  const { isAuthenticated, getToken } = useAuth();
+
   // Transcriptions cache
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionCacheEntry>>(loadStoredTranscriptions);
   const [isLoadingTranscriptions, setIsLoadingTranscriptions] = useState(false);
   const [transcriptionsError, setTranscriptionsError] = useState<string | null>(null);
+  const [transcriptionDetails, setTranscriptionDetails] = useState<Record<string, CacheEntry<Transcription>>>({});
   
   const storedTags = loadStoredTags();
   const storedFolders = loadStoredFolders();
@@ -168,6 +175,51 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     const cacheKey = getCacheKey(folderId, tagIds);
     return transcriptions[cacheKey]?.data ?? null;
   }, [transcriptions]);
+
+  const getCachedTranscription = useCallback((
+    id: string,
+    options?: { includeListCache?: boolean }
+  ): Transcription | null => {
+    const detailEntry = transcriptionDetails[id];
+    if (detailEntry) {
+      return detailEntry.data;
+    }
+
+    if (options?.includeListCache) {
+      const entries = Object.values(transcriptions);
+      for (const entry of entries) {
+        const match = entry.data.find(transcription => transcription.id === id);
+        if (match) {
+          return match;
+        }
+      }
+    }
+
+    return null;
+  }, [transcriptionDetails, transcriptions]);
+
+  const cacheTranscriptionDetail = useCallback((transcription: Transcription) => {
+    setTranscriptionDetails(prev => ({
+      ...prev,
+      [transcription.id]: {
+        data: transcription,
+        timestamp: Date.now(),
+        key: transcription.id,
+      },
+    }));
+  }, []);
+
+  const invalidateTranscriptionDetail = useCallback((id: string) => {
+    setTranscriptionDetails(prev => {
+      if (!prev[id]) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
 
   const fetchTranscriptions = useCallback(async (
     folderId?: string | null,
@@ -290,6 +342,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
 
   const invalidateCache = useCallback(() => {
     setTranscriptions({});
+    setTranscriptionDetails({});
     setTags([]);
     setTagsLoaded(false);
     setFolders([]);
@@ -321,6 +374,22 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   }, []);
 
   const updateTranscriptionInCache = useCallback((id: string, updates: Partial<Transcription>) => {
+    setTranscriptionDetails(prev => {
+      const existing = prev[id];
+      if (!existing) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [id]: {
+          ...existing,
+          data: { ...existing.data, ...updates },
+          timestamp: Date.now(),
+        },
+      };
+    });
+
     setTranscriptions(prev => {
       const keys = Object.keys(prev);
       if (keys.length === 0) {
@@ -395,6 +464,16 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     });
   }, []);
 
+  const refreshTranscriptionById = useCallback(async (transcriptionId: string) => {
+    try {
+      const transcription = await api.getTranscription(transcriptionId);
+      updateTranscriptionInCache(transcriptionId, transcription);
+      cacheTranscriptionDetail(transcription);
+    } catch (error) {
+      console.error('Failed to refresh transcription:', error);
+    }
+  }, [cacheTranscriptionDetail, updateTranscriptionInCache]);
+
   // Optimistic updates for tags
   const addTagOptimistic = useCallback((tag: Tag) => {
     setTags(prev => [...prev, tag]);
@@ -412,6 +491,109 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   const addFolderOptimistic = useCallback((folder: Folder) => {
     setFolders(prev => [...prev, folder]);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let isActive = true;
+    let reconnectTimeout: number | null = null;
+
+    const scheduleReconnect = () => {
+      if (!isActive) return;
+      reconnectTimeout = window.setTimeout(() => {
+        connect();
+      }, 5000);
+    };
+
+    const connect = async () => {
+      try {
+        const token = await getToken();
+        if (!token || !isActive) return;
+
+        const response = await fetch('/api/transcriptions/events', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error('Failed to connect to transcription events stream');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (isActive) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+
+          chunks.forEach((chunk) => {
+            const lines = chunk.split('\n');
+            const eventLine = lines.find(line => line.startsWith('event:'));
+            const dataLine = lines.find(line => line.startsWith('data:'));
+
+            const eventType = eventLine?.replace('event:', '').trim();
+            const payloadText = dataLine?.replace('data:', '').trim();
+
+            if (!eventType || !payloadText || eventType === 'ping' || eventType === 'ready') {
+              return;
+            }
+
+            if (eventType === 'transcription') {
+              try {
+                const payload = JSON.parse(payloadText) as {
+                  transcriptionId: string;
+                  status: Transcription['status'];
+                  progress: number;
+                  errorMessage?: string | null;
+                  updatedAt?: string;
+                };
+
+                updateTranscriptionInCache(payload.transcriptionId, {
+                  status: payload.status,
+                  progress: payload.progress,
+                  errorMessage: payload.errorMessage ?? null,
+                  updatedAt: payload.updatedAt ?? new Date().toISOString(),
+                });
+
+                if (payload.status === 'completed') {
+                  refreshTranscriptionById(payload.transcriptionId);
+                }
+              } catch (error) {
+                console.error('Failed to parse transcription event payload:', error);
+              }
+            }
+          });
+        }
+
+        scheduleReconnect();
+      } catch (error) {
+        if (isActive) {
+          console.error('Transcription events stream error:', error);
+          scheduleReconnect();
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+      if (reconnectTimeout) {
+        window.clearTimeout(reconnectTimeout);
+      }
+    };
+  }, [getToken, isAuthenticated, refreshTranscriptionById, updateTranscriptionInCache]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -483,6 +665,9 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
         invalidateTranscriptions,
         updateTranscriptionInCache,
         addTranscriptionToCache,
+        getCachedTranscription,
+        cacheTranscriptionDetail,
+        invalidateTranscriptionDetail,
       }}
     >
       {children}

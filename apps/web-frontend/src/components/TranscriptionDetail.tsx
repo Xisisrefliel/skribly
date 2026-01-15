@@ -1,47 +1,47 @@
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import type { Transcription, Quiz, FlashcardDeck, SourceFileDownload } from '@lecture/shared';
-  import { 
-    ArrowLeft, 
-    Trash2, 
-    RefreshCw, 
-    Download, 
-    ClipboardCheck, 
-    Layers,
-    Loader2,
-    Clock,
-    Globe,
-    AlertCircle,
-    Eye,
-    FileText,
-    Presentation,
-    Share2,
-    Check,
-    Lock,
-    Unlock,
-    Music,
-    Video,
-    MoreVertical
-  } from 'lucide-react';
-  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-  import { Button } from '@/components/ui/button';
-  import { Badge } from '@/components/ui/badge';
-  import { Progress } from '@/components/ui/progress';
-  import { Skeleton } from '@/components/ui/skeleton';
-  import { QuizView } from '@/components/QuizView';
-  import { FlashcardView } from '@/components/FlashcardView';
-  import { Markdown } from '@/components/Markdown';
-  import { TableOfContents } from '@/components/TableOfContents';
-  import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-  } from '@/components/ui/dropdown-menu';
-
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  ClipboardCheck,
+  Clock,
+  Download,
+  Eye,
+  FileText,
+  Globe,
+  Layers,
+  Loader2,
+  Lock,
+  MoreVertical,
+  Music,
+  Presentation,
+  RefreshCw,
+  Share2,
+  Trash2,
+  Unlock,
+  Video,
+} from 'lucide-react';
+import type { FlashcardDeck, Quiz, SourceFileDownload, Transcription } from '@lecture/shared';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FlashcardView } from '@/components/FlashcardView';
+import { Markdown } from '@/components/Markdown';
+import { Progress } from '@/components/ui/progress';
+import { QuizView } from '@/components/QuizView';
+import { Skeleton } from '@/components/ui/skeleton';
+import { TableOfContents } from '@/components/TableOfContents';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranscriptionCache } from '@/contexts/TranscriptionCacheContext';
 import { formatDate, formatDuration, getStatusStyles, type TranscriptionStatus } from '@/lib/utils';
 
 const StatusBadge = memo(function StatusBadge({ status }: { status: TranscriptionStatus }) {
@@ -52,6 +52,7 @@ const StatusBadge = memo(function StatusBadge({ status }: { status: Transcriptio
     processing: 'status-info',
     structuring: 'status-purple',
     completed: 'status-success',
+    canceled: 'status-warning',
     error: '',
   }[status];
 
@@ -65,6 +66,26 @@ const StatusBadge = memo(function StatusBadge({ status }: { status: Transcriptio
   
   return <Badge className={statusClass}>{styles.label}</Badge>;
 });
+
+const getProgressLabel = (status: TranscriptionStatus, progressValue: number): string => {
+  if (status === 'pending') {
+    return 'Queued for processing';
+  }
+
+  if (status === 'structuring') {
+    return progressValue >= 95 ? 'Finalizing notes' : 'Structuring notes';
+  }
+
+  if (status === 'processing') {
+    if (progressValue < 5) return 'Preparing upload';
+    if (progressValue < 15) return 'Preparing audio';
+    if (progressValue < 85) return 'Transcribing audio';
+    if (progressValue < 90) return 'Wrapping up transcript';
+    return 'Final review';
+  }
+
+  return 'Processing';
+};
 
 type StudyMode = 'none' | 'quiz' | 'flashcards';
 
@@ -172,6 +193,11 @@ export function TranscriptionDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const {
+    getCachedTranscription,
+    cacheTranscriptionDetail,
+    invalidateTranscriptionDetail,
+  } = useTranscriptionCache();
   const [transcription, setTranscription] = useState<Transcription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -195,19 +221,25 @@ export function TranscriptionDetail() {
   const [activeSourceDownload, setActiveSourceDownload] = useState<string | null>(null);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isRecreatingNote, setIsRecreatingNote] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
 
-  const fetchTranscription = useCallback(async () => {
+  const fetchTranscription = useCallback(async (options?: { silent?: boolean }) => {
     if (!id) return;
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
     try {
       // Try authenticated route first
       try {
         const data = await api.getTranscription(id);
         setTranscription(data);
+        cacheTranscriptionDetail(data);
       } catch (authErr) {
         // If auth fails, try public route
         try {
           const data = await api.getPublicTranscription(id);
           setTranscription(data);
+          cacheTranscriptionDetail(data);
         } catch {
           // Both failed, show error
           throw authErr;
@@ -216,15 +248,27 @@ export function TranscriptionDetail() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load transcription');
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) {
+        setIsLoading(false);
+      }
     }
-  }, [id]);
+  }, [cacheTranscriptionDetail, id]);
 
   const transcriptionStatus = transcription?.status;
 
   useEffect(() => {
+    if (!id) return;
+
+    const cached = getCachedTranscription(id, { includeListCache: true });
+    if (cached) {
+      setTranscription(cached);
+      setIsLoading(false);
+      fetchTranscription({ silent: true });
+      return;
+    }
+
     fetchTranscription();
-  }, [fetchTranscription]);
+  }, [fetchTranscription, getCachedTranscription, id]);
 
   useEffect(() => {
     // Poll for updates if processing
@@ -238,7 +282,7 @@ export function TranscriptionDetail() {
     }
 
     const interval = setInterval(() => {
-      fetchTranscription();
+      fetchTranscription({ silent: true });
     }, 3000);
 
     return () => clearInterval(interval);
@@ -279,10 +323,11 @@ export function TranscriptionDetail() {
     try {
       await api.updateTranscription(id, { title: newTitle });
       setTranscription(prev => prev ? { ...prev, title: newTitle } : null);
+      invalidateTranscriptionDetail(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update title');
     }
-  }, [id, transcription]);
+  }, [id, invalidateTranscriptionDetail, transcription]);
 
   const handleDelete = async () => {
     if (!id || !confirm('Are you sure you want to delete this transcription?')) return;
@@ -346,6 +391,24 @@ export function TranscriptionDetail() {
     }
   };
 
+  const triggerDownload = async (url: string, filename: string) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('Failed to download file');
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
   const handleDownloadSourceFile = async (file: SourceFileDownload) => {
     if (!id || !transcription) return;
 
@@ -355,13 +418,8 @@ export function TranscriptionDetail() {
       setSourceFiles(files);
 
       const latestFile = files.find((item) => item.originalName === file.originalName) ?? file;
-      const a = document.createElement('a');
       const fallbackName = transcription.originalFileName?.trim() || `${transcription.title}.${getSourceExtension(transcription)}`;
-      a.href = latestFile.url;
-      a.download = latestFile.originalName?.trim() || fallbackName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await triggerDownload(latestFile.url, latestFile.originalName?.trim() || fallbackName);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download source file');
     } finally {
@@ -378,15 +436,10 @@ export function TranscriptionDetail() {
         ? await api.getPdfDownloadUrl(id)
         : await api.generatePdf(id);
 
-      const a = document.createElement('a');
-      a.href = pdfUrl;
-      a.download = `${transcription.title}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await triggerDownload(pdfUrl, `${transcription.title}.pdf`);
 
       if (!transcription.pdfKey) {
-        await fetchTranscription();
+        await fetchTranscription({ silent: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download PDF');
@@ -396,22 +449,39 @@ export function TranscriptionDetail() {
   };
 
   const handleRetry = async () => {
-    if (!id) return;
+    if (!id || !transcription) return;
     try {
-      await api.startTranscription(id);
-      fetchTranscription();
+      const response = await api.reprocessTranscription(id);
+      console.log('Retry response:', response);
+      fetchTranscription({ silent: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to retry');
+      setError(err instanceof Error ? err.message : 'Failed to retry transcription');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!id || !transcription) return;
+    setIsCanceling(true);
+
+    try {
+      await api.cancelTranscription(id);
+      setTranscription(prev => prev ? { ...prev, status: 'canceled' } : prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel transcription');
+    } finally {
+      setIsCanceling(false);
     }
   };
 
   const handleRecreateNote = async () => {
+
     if (!id) return;
     setIsRecreatingNote(true);
     setError(null);
     try {
       await api.restructureTranscription(id);
-      fetchTranscription();
+      invalidateTranscriptionDetail(id);
+      fetchTranscription({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate notes');
     } finally {
@@ -554,6 +624,7 @@ export function TranscriptionDetail() {
     try {
       await api.updateTranscription(id, { isPublic: newIsPublic });
       setTranscription(prev => prev ? { ...prev, isPublic: newIsPublic } : null);
+      invalidateTranscriptionDetail(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update visibility');
     } finally {
@@ -650,6 +721,8 @@ export function TranscriptionDetail() {
   const content = transcription.structuredText || transcription.transcriptionText || '';
   const showSourcePanel = isLoadingSourceFiles || sourceFiles.length > 0;
   const sourcePanelTitle = sourceFiles.length > 1 ? 'Sources' : 'Source';
+  const progressValue = Math.round((transcription.progress ?? 0) * 100);
+  const progressLabel = getProgressLabel(transcription.status as TranscriptionStatus, progressValue);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in-up">
@@ -721,9 +794,9 @@ export function TranscriptionDetail() {
           </div>
 
           {/* Action bar - Enhanced styling */}
-          <div className="flex items-center justify-between py-5 px-4 bg-muted/40 rounded-xl border border-border/50 mb-8">
+          <div className="flex flex-col gap-3 py-5 px-4 bg-muted/40 rounded-xl border border-border/50 mb-8 sm:flex-row sm:items-center sm:justify-between">
             {/* Left side - Study actions */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
               {isCompleted && isAuthenticated && (
                 <>
                   <Button
@@ -738,7 +811,7 @@ export function TranscriptionDetail() {
                     ) : (
                       <ClipboardCheck className="h-4 w-4" />
                     )}
-                    <span className="hidden sm:inline ml-1.5">Quiz</span>
+                    <span className="ml-1.5">Quiz</span>
                   </Button>
 
                   <Button
@@ -753,7 +826,7 @@ export function TranscriptionDetail() {
                     ) : (
                       <Layers className="h-4 w-4" />
                     )}
-                    <span className="hidden sm:inline ml-1.5">Flashcards</span>
+                    <span className="ml-1.5">Flashcards</span>
                   </Button>
                 </>
               )}
@@ -767,7 +840,29 @@ export function TranscriptionDetail() {
             </div>
 
             {/* Right side - Management actions */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
+              {isAuthenticated && (
+                <Button
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  size="sm"
+                  className="neu-button text-foreground xl:hidden"
+                  title={transcription.pdfKey ? 'Download structured PDF' : 'Generate PDF'}
+                >
+                  {isDownloadingPdf ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">
+                    {isDownloadingPdf
+                      ? 'Preparing PDF...'
+                      : transcription.pdfKey
+                        ? 'Download PDF'
+                        : 'Generate PDF'}
+                  </span>
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -791,6 +886,13 @@ export function TranscriptionDetail() {
                     )}
                     <span>{isCopied ? 'Copied!' : 'Copy share link'}</span>
                   </DropdownMenuItem>
+
+                  {isCompleted && (
+                    <DropdownMenuItem onClick={() => setShowRaw(!showRaw)}>
+                      <Eye className="h-4 w-4" />
+                      <span>{showRaw ? 'Show Structured' : 'Show Raw'}</span>
+                    </DropdownMenuItem>
+                  )}
 
                   {isAuthenticated && (
                     <>
@@ -858,16 +960,38 @@ export function TranscriptionDetail() {
             <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
               <CardContent className="pt-6">
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2 font-medium">
                       <span className="w-2.5 h-2.5 rounded-full bg-status-info animate-pulse-soft shadow-lg shadow-status-info/50" />
-                      {transcription.status === 'pending' && 'Waiting to start...'}
-                      {transcription.status === 'processing' && 'Transcribing audio...'}
-                      {transcription.status === 'structuring' && 'Structuring notes...'}
+                      {progressLabel}
                     </span>
-                    <span className="font-bold text-primary">{Math.round(transcription.progress * 100)}%</span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-primary">{progressValue}%</span>
+                      {isAuthenticated && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="neu-button-destructive"
+                          onClick={handleCancel}
+                          disabled={isCanceling}
+                        >
+                          {isCanceling ? 'Canceling...' : 'Cancel'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <Progress value={transcription.progress * 100} className="h-2" />
+                  <Progress value={progressValue} className="h-2" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {transcription.status === 'canceled' && (
+            <Card className="mb-6 border-status-warning/30 bg-status-warning-soft">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 text-status-warning">
+                  <AlertCircle className="h-5 w-5" />
+                  <p>Transcription canceled. You can reprocess anytime.</p>
                 </div>
               </CardContent>
             </Card>
@@ -876,27 +1000,6 @@ export function TranscriptionDetail() {
           {/* Content */}
           {isCompleted && (
             <div className="document-content">
-              {/* View toggle - Enhanced styling */}
-              <div className="flex items-center justify-between mb-6 p-4 bg-muted/30 rounded-xl border border-border/50">
-                <div className="text-sm font-medium text-muted-foreground">
-                  {transcription.whisperModel && (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
-                      Model: {transcription.whisperModel}
-                    </span>
-                  )}
-                </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowRaw(!showRaw)}
-                    className="neu-button hover:bg-primary/10 transition-all duration-200"
-                  >
-                  <Eye className="h-4 w-4 mr-2" />
-                  {showRaw ? 'Show Structured' : 'Show Raw'}
-                </Button>
-              </div>
-
               {/* Markdown content - Enhanced container */}
               {showRaw ? (
                 <div className="bg-gradient-to-br from-muted/40 to-muted/20 rounded-xl border border-border/50 p-6">
@@ -947,7 +1050,7 @@ export function TranscriptionDetail() {
                           title={`Download ${file.originalName}`}
                         >
                           <span className="flex items-center gap-3 min-w-0">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/70 border border-border/50">
+                            <span className="flex h-10 w-10 items-center justify-center">
                               <Icon className="h-5 w-5 text-primary" />
                             </span>
                             <span className="min-w-0">
@@ -972,7 +1075,7 @@ export function TranscriptionDetail() {
                     onClick={handleDownloadPdf}
                     disabled={isDownloadingPdf}
                     size="sm"
-                    className="neu-button w-full"
+                    className="neu-button w-full text-foreground"
                     title={transcription.pdfKey ? 'Download structured PDF' : 'Generate PDF'}
                   >
                     {isDownloadingPdf ? (

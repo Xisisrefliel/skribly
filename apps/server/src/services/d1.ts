@@ -138,6 +138,7 @@ export const d1Service = {
       await executeQuery(`UPDATE folders SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
       await executeQuery(`UPDATE tags SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
       await executeQuery(`UPDATE quiz_attempts SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
+      await executeQuery(`UPDATE usage_events SET user_id = ? WHERE user_id = ?`, [userId, oldUserId]);
 
       await executeQuery(`DELETE FROM session WHERE user_id = ?`, [oldUserId]);
       await executeQuery(`DELETE FROM account WHERE user_id = ?`, [oldUserId]);
@@ -466,6 +467,38 @@ export const d1Service = {
       await executeQuery(`CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)`);
     } catch (e) {
       // Index already exists, ignore
+    }
+
+    // ============================================
+    // Usage events
+    // ============================================
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS usage_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        transcription_id TEXT NOT NULL,
+        step TEXT NOT NULL,
+        provider TEXT,
+        model TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        total_tokens INTEGER,
+        audio_seconds REAL,
+        cost_usd REAL DEFAULT 0,
+        metadata_json TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+        FOREIGN KEY (transcription_id) REFERENCES transcriptions(id) ON DELETE CASCADE
+      )
+    `);
+
+    try {
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_usage_events_user_id ON usage_events(user_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_usage_events_transcription_id ON usage_events(transcription_id)`);
+      await executeQuery(`CREATE INDEX IF NOT EXISTS idx_usage_events_step ON usage_events(step)`);
+    } catch (e) {
+      // Indexes may already exist
     }
 
     // ============================================
@@ -807,6 +840,54 @@ export const d1Service = {
        WHERE id = ?`,
       [id]
     );
+  },
+
+  // ============================================
+  // Usage events
+  // ============================================
+
+  async insertUsageEvent(event: {
+    id: string;
+    userId: string;
+    transcriptionId: string;
+    step: string;
+    provider: string;
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+    audioSeconds: number | null;
+    costUsd: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    await executeQuery(
+      `INSERT INTO usage_events (
+         id, user_id, transcription_id, step, provider, model,
+         input_tokens, output_tokens, total_tokens, audio_seconds, cost_usd, metadata_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        event.id,
+        event.userId,
+        event.transcriptionId,
+        event.step,
+        event.provider,
+        event.model,
+        event.inputTokens,
+        event.outputTokens,
+        event.totalTokens,
+        event.audioSeconds,
+        event.costUsd,
+        event.metadata ? JSON.stringify(event.metadata) : null,
+      ]
+    );
+  },
+
+  async getTranscriptionUsageTotal(transcriptionId: string): Promise<number> {
+    const rows = await executeQuery<{ total_cost: number | null }>(
+      `SELECT SUM(cost_usd) as total_cost FROM usage_events WHERE transcription_id = ?`,
+      [transcriptionId]
+    );
+    return Number(rows[0]?.total_cost ?? 0);
   },
 
   // ============================================

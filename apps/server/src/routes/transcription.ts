@@ -5,7 +5,15 @@ import { d1Service } from '../services/d1.js';
 import { r2Service } from '../services/r2.js';
 import { pdfService } from '../services/pdf.js';
 import { transcriptionService } from '../services/transcription.js';
+import type { TranscriptionProvider } from '../services/transcription.js';
 import { llmService } from '../services/llm.js';
+import { usageService } from '../services/usage.js';
+import {
+  addTranscriptionEventClient,
+  broadcastTranscriptionPing,
+  broadcastTranscriptionUpdate,
+  removeTranscriptionEventClient,
+} from '../services/transcriptionEvents.js';
 
 import { documentService } from '../services/document.js';
 import { enhancedDocumentService } from '../services/enhancedDocument.js';
@@ -18,6 +26,7 @@ import type {
   TranscribeResponse,
   TranscriptionDetailResponse,
   TranscriptionListResponse,
+  TranscriptionStatus,
 } from '@lecture/shared';
 
 const router: RouterType = Router();
@@ -52,6 +61,35 @@ const getSourceExtension = (sourceType: SourceType, mimeType?: string | null) =>
 const buildDefaultSourceName = (title: string, sourceType: SourceType, mimeType?: string | null) =>
   `${title}.${getSourceExtension(sourceType, mimeType)}`;
 
+const createTranscriptionEventPayload = (
+  transcriptionId: string,
+  status: TranscriptionStatus,
+  progress: number,
+  errorMessage?: string | null
+) => ({
+  transcriptionId,
+  status,
+  progress,
+  errorMessage: errorMessage ?? null,
+  updatedAt: new Date().toISOString(),
+});
+
+async function updateTranscriptionStatusWithEvent(
+  userId: string,
+  transcriptionId: string,
+  status: TranscriptionStatus,
+  progress: number,
+  errorMessage?: string
+): Promise<void> {
+  await d1Service.updateTranscriptionStatus(transcriptionId, status, progress, errorMessage);
+  broadcastTranscriptionUpdate(userId, createTranscriptionEventPayload(transcriptionId, status, progress, errorMessage));
+}
+
+async function isTranscriptionCanceled(transcriptionId: string, userId: string): Promise<boolean> {
+  const transcription = await d1Service.getTranscription(transcriptionId, userId);
+  return transcription?.status === 'canceled';
+}
+
 // GET /api/transcriptions - List all transcriptions for the user (with optional folder and tag filters)
 router.get('/transcriptions', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -73,6 +111,28 @@ router.get('/transcriptions', async (req: Request, res: Response): Promise<void>
       message: error instanceof Error ? error.message : 'Unknown error' 
     });
   }
+});
+
+// GET /api/transcriptions/events - Stream transcription updates
+router.get('/transcriptions/events', (req: Request, res: Response): void => {
+  const userId = req.userId!;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  addTranscriptionEventClient(userId, res);
+  res.write('event: ready\ndata: {}\n\n');
+
+  const heartbeat = setInterval(() => {
+    broadcastTranscriptionPing(userId);
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    removeTranscriptionEventClient(userId, res);
+  });
 });
 
 // GET /api/transcription/:id - Get a single transcription
@@ -227,6 +287,49 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
   }
 });
 
+// POST /api/transcription/:id/cancel - Cancel a transcription in progress
+router.post('/transcription/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const userId = req.userId!;
+
+  try {
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (
+      transcription.status === 'completed' ||
+      transcription.status === 'error' ||
+      transcription.status === 'canceled'
+    ) {
+      res.status(409).json({ error: 'Conflict', message: 'Transcription is not cancelable' });
+      return;
+    }
+
+    await updateTranscriptionStatusWithEvent(
+      userId,
+      id,
+      'canceled',
+      transcription.progress ?? 0
+    );
+
+    res.status(202).json({
+      id,
+      status: 'canceled',
+      message: 'Transcription canceled',
+    } as TranscribeResponse);
+  } catch (error) {
+    console.error('Cancel transcription error:', error);
+    res.status(500).json({
+      error: 'Failed to cancel transcription',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // POST /api/transcription/:id/reprocess - Re-run transcription and structuring
 router.post('/transcription/:id/reprocess', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -264,7 +367,7 @@ router.post('/transcription/:id/reprocess', async (req: Request, res: Response):
     }
 
     await d1Service.clearStructuredContent(id);
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0);
 
     res.status(202).json({
       id,
@@ -332,7 +435,7 @@ router.post('/transcription/:id/restructure', async (req: Request, res: Response
     }
 
     await d1Service.clearStructuredContent(id);
-    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.85);
+    await updateTranscriptionStatusWithEvent(userId, id, 'structuring', 0.85);
 
     res.status(202).json({
       id,
@@ -363,8 +466,17 @@ router.post('/transcription/:id/restructure', async (req: Request, res: Response
 router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.userId!;
+  const { mode } = req.body as { mode?: TranscriptionMode };
 
   try {
+    if (mode && mode !== 'fast' && mode !== 'quality') {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'mode must be either fast or quality',
+      });
+      return;
+    }
+
     const isActive = await d1Service.isSubscriptionActive(userId);
     if (!isActive) {
       res.status(402).json({
@@ -407,7 +519,7 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
     }
 
     // Update status to processing
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0);
 
     // Respond immediately, process in background
     res.status(202).json({ 
@@ -427,7 +539,7 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
         console.error(`Background document processing error for ${id}:`, err);
       });
     } else {
-      processTranscription(id, userId, audioUrl).catch(err => {
+      processTranscription(id, userId, audioUrl, mode).catch(err => {
         console.error(`Background transcription error for ${id}:`, err);
       });
     }
@@ -444,14 +556,30 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
 /**
  * Generate quiz and flashcards for a transcription in background (in parallel)
  */
-async function generateStudyMaterials(transcriptionId: string, content: string, title: string, language: string = 'English'): Promise<void> {
+async function generateStudyMaterials(
+  transcriptionId: string,
+  userId: string,
+  content: string,
+  title: string,
+  language: string = 'English'
+): Promise<void> {
   console.log(`Starting study materials generation for ${transcriptionId} (parallel, language: ${language})`);
 
   // Generate quiz and flashcards in parallel
   const quizPromise = (async () => {
     try {
       console.log(`Generating quiz for ${transcriptionId}`);
-      const questions = await llmService.generateQuiz(content, title, 10, language);
+      const questions = await llmService.generateQuiz(
+        content,
+        title,
+        10,
+        language,
+        {
+          userId,
+          transcriptionId,
+          step: 'quiz',
+        }
+      );
       
       const quiz: Quiz = {
         id: uuidv4(),
@@ -471,7 +599,17 @@ async function generateStudyMaterials(transcriptionId: string, content: string, 
   const flashcardsPromise = (async () => {
     try {
       console.log(`Generating flashcards for ${transcriptionId}`);
-      const cards = await llmService.generateFlashcards(content, title, 20, language);
+      const cards = await llmService.generateFlashcards(
+        content,
+        title,
+        20,
+        language,
+        {
+          userId,
+          transcriptionId,
+          step: 'flashcards',
+        }
+      );
       
       const deck: FlashcardDeck = {
         id: uuidv4(),
@@ -504,22 +642,42 @@ async function processFromRawText(
   whisperModel: string | null = null,
   audioDuration: number | null = null
 ): Promise<void> {
+  if (await isTranscriptionCanceled(id, userId)) {
+    return;
+  }
+
   // Save raw transcription (use 0 for documents that don't have duration)
   await d1Service.updateTranscriptionText(id, rawText, audioDuration ?? 0, whisperModel ?? undefined);
   console.log(`Starting LLM structuring for ${id}`);
 
-  await d1Service.updateTranscriptionStatus(id, 'structuring', 0.90);
+  await updateTranscriptionStatusWithEvent(userId, id, 'structuring', 0.90);
   
   try {
-    const { structuredText, detectedLanguage } = await llmService.structureTranscription(rawText, title);
+    const { structuredText, detectedLanguage } = await llmService.structureTranscription(
+      rawText,
+      title,
+      {
+        userId,
+        transcriptionId: id,
+        step: 'structuring',
+      }
+    );
+
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
     
-    await d1Service.updateTranscriptionStatus(id, 'structuring', 0.95);
+    await updateTranscriptionStatusWithEvent(userId, id, 'structuring', 0.95);
     await d1Service.updateStructuredText(id, structuredText, detectedLanguage);
+    broadcastTranscriptionUpdate(
+      userId,
+      createTranscriptionEventPayload(id, 'completed', 1, null)
+    );
     console.log(`Structuring completed for ${id}, language: ${detectedLanguage}`);
 
     if (structuredText) {
       // Generate quiz and flashcards
-      await generateStudyMaterials(id, structuredText, title, detectedLanguage);
+      await generateStudyMaterials(id, userId, structuredText, title, detectedLanguage);
 
       try {
         const { pdfKey } = await pdfService.generateAndUpload(
@@ -536,7 +694,14 @@ async function processFromRawText(
     }
   } catch (llmError) {
     console.error(`LLM structuring failed for ${id}:`, llmError);
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
     await d1Service.updateStructuredText(id, '');
+    broadcastTranscriptionUpdate(
+      userId,
+      createTranscriptionEventPayload(id, 'completed', 1, null)
+    );
     console.log(`Processing completed for ${id} (without structuring)`);
   }
 }
@@ -557,7 +722,11 @@ async function processDocumentTranscription(
 
     console.log(`Starting document processing for ${id}: "${title}", type=${sourceType}`);
 
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.05);
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
+
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.05);
 
     let rawText = '';
     let finalSourceType = sourceType;
@@ -574,8 +743,12 @@ async function processDocumentTranscription(
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const fileProgressStart = 0.15 + (i * progressPerFile);
+
+          if (await isTranscriptionCanceled(id, userId)) {
+            return;
+          }
           
-          await d1Service.updateTranscriptionStatus(id, 'processing', fileProgressStart);
+          await updateTranscriptionStatusWithEvent(userId, id, 'processing', fileProgressStart);
           
           const fileBuffer = await r2Service.getFile(file.key);
           const result = await enhancedDocumentService.processDocument(
@@ -584,9 +757,16 @@ async function processDocumentTranscription(
             null,
             async (p) => {
               const currentProgress = fileProgressStart + (p.progress * progressPerFile);
-              await d1Service.updateTranscriptionStatus(id, 'processing', currentProgress);
+              if (await isTranscriptionCanceled(id, userId)) {
+                return;
+              }
+              await updateTranscriptionStatusWithEvent(userId, id, 'processing', currentProgress);
             }
           );
+
+          if (await isTranscriptionCanceled(id, userId)) {
+            return;
+          }
           
           textParts.push(`--- Source File: ${file.originalName} ---\n\n${result.text}`);
         }
@@ -602,7 +782,7 @@ async function processDocumentTranscription(
     if (!rawText) {
       // Single file processing (original logic)
       const buffer = await r2Service.getFile(sourceKey);
-      await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
+      await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.15);
 
       const result = await enhancedDocumentService.processDocument(
         buffer as Buffer,
@@ -611,14 +791,21 @@ async function processDocumentTranscription(
         async (p) => {
           const progressRange = 0.70;
           const currentProgress = 0.15 + p.progress * progressRange;
-          await d1Service.updateTranscriptionStatus(id, 'processing', currentProgress);
+          if (await isTranscriptionCanceled(id, userId)) {
+            return;
+          }
+          await updateTranscriptionStatusWithEvent(userId, id, 'processing', currentProgress);
         }
       );
       rawText = result.text;
     }
 
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
+
     console.log(`Text extracted from ${sourceType}, length: ${rawText.length} chars`);
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.85);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.85);
 
     // Process from raw text onwards (reuse common pipeline)
     const infoModel = `document/${finalSourceType}${rawText.includes('--- Source File:') ? '-batch' : ''}`;
@@ -626,7 +813,8 @@ async function processDocumentTranscription(
 
   } catch (error) {
     console.error(`Document processing failed for ${id}:`, error);
-    await d1Service.updateTranscriptionStatus(
+    await updateTranscriptionStatusWithEvent(
+      userId,
       id,
       'error',
       0,
@@ -636,7 +824,35 @@ async function processDocumentTranscription(
 }
 
 // Background transcription processing
-async function processTranscription(id: string, userId: string, audioUrl: string): Promise<void> {
+type TranscriptionMode = 'fast' | 'quality';
+
+type TranscriptionModeOptions = {
+  provider: TranscriptionProvider;
+  model: string;
+};
+
+const getTranscriptionModeOptions = (mode?: TranscriptionMode): TranscriptionModeOptions => {
+  if (mode === 'fast') {
+    const models = transcriptionService.getAvailableModels('groq') as { whisperTurbo: string };
+    return {
+      provider: 'groq',
+      model: models.whisperTurbo,
+    };
+  }
+
+  const models = transcriptionService.getAvailableModels('openai') as { gpt4oMini: string };
+  return {
+    provider: 'openai',
+    model: models.gpt4oMini,
+  };
+};
+
+async function processTranscription(
+  id: string,
+  userId: string,
+  audioUrl: string,
+  mode?: TranscriptionMode
+): Promise<void> {
   let tempDir: string | null = null;
 
   try {
@@ -644,7 +860,10 @@ async function processTranscription(id: string, userId: string, audioUrl: string
     const transcriptionRecord = await d1Service.getTranscription(id, userId);
     const title = transcriptionRecord?.title || 'Untitled Lecture';
 
-    console.log(`Starting transcription for ${id}: "${title}"`);
+    const transcriptionOptions = getTranscriptionModeOptions(mode);
+    const modeLabel = mode ?? 'quality';
+
+    console.log(`Starting transcription for ${id}: "${title}" (mode: ${modeLabel}, provider: ${transcriptionOptions.provider}, model: ${transcriptionOptions.model})`);
 
     // Progress breakdown:
     // 0-5%: Download audio
@@ -653,11 +872,15 @@ async function processTranscription(id: string, userId: string, audioUrl: string
     // 85-95%: Structuring with LLM
     // 95-100%: PDF generation + completion
 
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
+
     // Download audio from R2
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.02);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.02);
     const audioBuffer = await r2Service.getFile(audioUrl);
     const filename = audioUrl.split('/').pop() || 'audio.mp3';
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.05);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.05);
 
     // Process audio (convert and split)
     const { chunks, totalDuration, tempDir: processedTempDir } = await processAudioFile(audioBuffer, filename);
@@ -669,7 +892,12 @@ async function processTranscription(id: string, userId: string, audioUrl: string
       duration: `${Math.round(c.endTime - c.startTime)}s`,
       path: c.filePath 
     })));
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.15);
+
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
+
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.15);
 
     // Transcribe each chunk (0.15 - 0.85 progress)
     const transcriptionParts: string[] = [];
@@ -683,12 +911,54 @@ async function processTranscription(id: string, userId: string, audioUrl: string
       const chunkDuration = chunk.endTime - chunk.startTime;
       console.log(`Transcribing chunk ${i + 1}/${chunks.length}: ${chunk.filePath}, duration: ${Math.round(chunkDuration)}s`);
 
+      if (await isTranscriptionCanceled(id, userId)) {
+        return;
+      }
+
       // Update progress at start of each chunk
       const chunkStartProgress = 0.15 + i * progressPerChunk;
-      await d1Service.updateTranscriptionStatus(id, 'processing', chunkStartProgress);
+      await updateTranscriptionStatusWithEvent(userId, id, 'processing', chunkStartProgress);
 
-      const result = await transcriptionService.transcribeFile(chunk.filePath);
+      const result = await transcriptionService.transcribeFile(chunk.filePath, transcriptionOptions);
       transcriptionParts.push(result.text);
+
+      const usageContext = {
+        userId,
+        transcriptionId: id,
+        step: 'audio',
+      } as const;
+
+      const chunkMetadata = {
+        chunkIndex: chunk.index,
+        chunkDurationSeconds: Math.round(chunkDuration),
+      };
+
+      const hasTokenUsage = Boolean(
+        result.usage?.inputTokens || result.usage?.outputTokens || result.usage?.totalTokens
+      );
+
+      if (hasTokenUsage) {
+        await usageService.recordTokenUsage({
+          context: usageContext,
+          provider: result.provider,
+          model: result.model,
+          usage: {
+            inputTokens: result.usage?.inputTokens ?? null,
+            outputTokens: result.usage?.outputTokens ?? null,
+            totalTokens: result.usage?.totalTokens ?? null,
+          },
+          metadata: chunkMetadata,
+        });
+      } else {
+        const audioSeconds = result.duration || chunkDuration;
+        await usageService.recordAudioUsage({
+          context: usageContext,
+          provider: result.provider,
+          model: result.model,
+          audioSeconds,
+          metadata: chunkMetadata,
+        });
+      }
       
       // Capture the model and provider from the first chunk
       if (i === 0) {
@@ -696,9 +966,13 @@ async function processTranscription(id: string, userId: string, audioUrl: string
         transcriptionProvider = result.provider;
       }
 
+      if (await isTranscriptionCanceled(id, userId)) {
+        return;
+      }
+
       // Update progress at end of each chunk
       const chunkEndProgress = 0.15 + (i + 1) * progressPerChunk;
-      await d1Service.updateTranscriptionStatus(id, 'processing', Math.min(chunkEndProgress, 0.85));
+      await updateTranscriptionStatusWithEvent(userId, id, 'processing', Math.min(chunkEndProgress, 0.85));
     }
 
     // Merge transcription parts
@@ -707,15 +981,20 @@ async function processTranscription(id: string, userId: string, audioUrl: string
     const whisperModel = transcriptionProvider ? `${transcriptionProvider}/${transcriptionModel}` : transcriptionModel;
     console.log(`Transcription complete for ${id}, length: ${fullTranscription.length} chars, model: ${whisperModel}`);
 
+    if (await isTranscriptionCanceled(id, userId)) {
+      return;
+    }
+
     // Save raw transcription and update status to structuring (85% -> 90%)
-    await d1Service.updateTranscriptionStatus(id, 'processing', 0.87);
+    await updateTranscriptionStatusWithEvent(userId, id, 'processing', 0.87);
 
     // Process from raw text onwards (reuse common pipeline)
     await processFromRawText(id, userId, fullTranscription, title, whisperModel, totalDuration);
 
   } catch (error) {
     console.error(`Transcription failed for ${id}:`, error);
-    await d1Service.updateTranscriptionStatus(
+    await updateTranscriptionStatusWithEvent(
+      userId,
       id, 
       'error', 
       0, 

@@ -4,6 +4,7 @@ export type TranscriptionStatus =
   | 'processing'   // Currently being transcribed
   | 'structuring'  // Transcription done, now structuring with LLM
   | 'completed'    // Successfully transcribed and structured
+  | 'canceled'     // Canceled by user
   | 'error';       // Failed to transcribe
 
 // Source file type for transcriptions
