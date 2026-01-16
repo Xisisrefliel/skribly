@@ -62,13 +62,21 @@ async function requireActiveSubscription(req: Request, res: Response, next: Next
   try {
     const userId = req.userId!;
     const isActive = await d1Service.isSubscriptionActive(userId);
+
+    // Allow 1 free transcription for users without subscription
     if (!isActive) {
-      res.status(402).json({
-        error: 'Subscription required',
-        message: 'An active subscription is required to upload files.',
-      });
-      return;
+      const transcriptionCount = await d1Service.getTranscriptionCountByUser(userId);
+      if (transcriptionCount >= 1) {
+        res.status(402).json({
+          error: 'Subscription required',
+          message: 'You have used your free transcription. Please subscribe to continue.',
+          freeLimit: 1,
+          currentCount: transcriptionCount,
+        });
+        return;
+      }
     }
+
     next();
   } catch (error) {
     console.error('Subscription check failed:', error);

@@ -1,16 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { FileUpload } from '@/components/FileUpload';
 import { Button } from '@/components/ui/button';
 import { Link, Navigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Upload, Zap, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, Zap, Sparkles, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { api, type BillingStatusResponse } from '@/lib/api';
 
 export function UploadPage() {
   useDocumentTitle('Notism - Upload Recording');
   const { isAuthenticated, isLoading } = useAuth();
   const [transcriptionMode, setTranscriptionMode] = useState<'fast' | 'quality'>('quality');
+  const [billingStatus, setBillingStatus] = useState<BillingStatusResponse | null>(null);
+  const [loadingBillingStatus, setLoadingBillingStatus] = useState(true);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      api.getBillingStatus()
+        .then(setBillingStatus)
+        .catch(console.error)
+        .finally(() => setLoadingBillingStatus(false));
+    }
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -45,6 +57,37 @@ export function UploadPage() {
             </div>
           </div>
         </div>
+
+        {/* Free tier information */}
+        {!loadingBillingStatus && billingStatus && !billingStatus.isActive && (
+          <div className="neu-floating-card px-5 py-4 bg-status-info-soft border-2 border-status-info/30">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-status-info-soft flex items-center justify-center flex-shrink-0">
+                <Info className="h-5 w-5 text-status-info" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-sm font-semibold text-status-info mb-1">Free Tier</h2>
+                <p className="text-xs text-foreground/80">
+                  {billingStatus.hasFreeTierAvailable ? (
+                    <>
+                      You have <span className="font-semibold">{billingStatus.freeLimit - billingStatus.transcriptionCount} free transcription</span> remaining.
+                      <Link to="/settings" className="text-status-info font-medium hover:underline ml-1">
+                        Subscribe
+                      </Link> for unlimited access.
+                    </>
+                  ) : (
+                    <>
+                      You've used your free transcription.{' '}
+                      <Link to="/settings" className="text-status-info font-medium hover:underline">
+                        Subscribe
+                      </Link> to continue transcribing.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Transcription mode toggle */}
         <div className="neu-floating-card px-5 py-4">

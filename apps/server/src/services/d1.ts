@@ -699,14 +699,25 @@ export const d1Service = {
       [userId]
     );
     const transcriptions = rows.map(rowToTranscription);
-    
+
     // Fetch tags for each transcription
     for (const transcription of transcriptions) {
       const tags = await this.getTagsByTranscription(transcription.id);
       (transcription as any).tags = tags;
     }
-    
+
     return transcriptions;
+  },
+
+  /**
+   * Count transcriptions for a user
+   */
+  async getTranscriptionCountByUser(userId: string): Promise<number> {
+    const rows = await executeQuery<{ count: number }>(
+      `SELECT COUNT(*) as count FROM transcriptions WHERE user_id = ?`,
+      [userId]
+    );
+    return rows[0]?.count || 0;
   },
 
   /**

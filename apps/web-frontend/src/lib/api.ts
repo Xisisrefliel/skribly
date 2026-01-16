@@ -31,11 +31,14 @@ interface ApiError {
   message: string;
 }
 
-interface BillingStatusResponse {
+export interface BillingStatusResponse {
   isActive: boolean;
   status: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  transcriptionCount: number;
+  freeLimit: number;
+  hasFreeTierAvailable: boolean;
 }
 
 type TokenGetter = () => Promise<string | null>;

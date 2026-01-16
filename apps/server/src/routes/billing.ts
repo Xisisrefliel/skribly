@@ -51,12 +51,17 @@ router.get('/billing/status', async (req: Request, res: Response): Promise<void>
     const userId = req.userId!;
     const subscription = await d1Service.getSubscriptionByUser(userId);
     const isActive = await d1Service.isSubscriptionActive(userId);
+    const transcriptionCount = await d1Service.getTranscriptionCountByUser(userId);
+    const freeLimit = 1;
 
     res.json({
       isActive,
       status: subscription?.status || null,
       currentPeriodEnd: subscription?.current_period_end || null,
       cancelAtPeriodEnd: subscription ? Boolean(subscription.cancel_at_period_end) : false,
+      transcriptionCount,
+      freeLimit,
+      hasFreeTierAvailable: !isActive && transcriptionCount < freeLimit,
     });
   } catch (error) {
     console.error('Get billing status error:', error);
