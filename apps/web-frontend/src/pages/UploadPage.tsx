@@ -21,7 +21,7 @@ export function UploadPage() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/sign-in" replace />;
   }
 
   return (
@@ -29,7 +29,7 @@ export function UploadPage() {
       <div className="max-w-xl mx-auto flex flex-col gap-4">
         {/* Header bar */}
         <div className="neu-floating-card flex items-center gap-4 px-5 py-4">
-          <Link to="/">
+          <Link to="/app">
             <Button variant="outline" className="neu-button">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back

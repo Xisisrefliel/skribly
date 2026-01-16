@@ -106,6 +106,38 @@ function UserMenu({
   );
 }
 
+function PublicUserMenu() {
+  const { user, signOut } = useAuth();
+
+  if (!user) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" className="neu-button-subtle">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={user.image} alt={user.name} />
+            <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>
+          <div className="flex flex-col space-y-1">
+            <p className="text-sm font-medium">{user.name}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={signOut} className="cursor-pointer">
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function Layout() {
   const { isAuthenticated } = useAuth();
   const { billingStatus } = useBillingStatus();
@@ -165,9 +197,9 @@ export function Layout() {
           aria-label="Main navigation"
         >
           <Link
-            to="/"
+            to="/app"
             className="flex items-center space-x-2 group outline-none rounded-lg p-1 -m-1"
-            aria-label="Notism - Go to home"
+            aria-label="Notism - Go to app"
           >
             <span className="font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
               Notism
@@ -234,6 +266,102 @@ export function Layout() {
           </div>
         </footer>
       )}
+
+      {!hasCookieConsent && (
+        <div className="fixed inset-x-0 bottom-4 z-50 px-4" role="dialog" aria-live="polite">
+          <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-card/95 backdrop-blur neu-panel px-4 py-3 shadow-lg flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              We use essential cookies to keep Notism secure and running. Please accept to continue. Read our{' '}
+              <Link to="/privacy" className="text-foreground hover:underline">Privacy Policy</Link>{' '}and{' '}
+              <Link to="/terms" className="text-foreground hover:underline">Terms of Service</Link>.
+            </p>
+            <Button size="sm" className="neu-button-primary" onClick={handleAcceptCookies}>
+              Accept
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PublicLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+  const [hasCookieConsent, setHasCookieConsent] = useState(false);
+
+  useEffect(() => {
+    const storedConsent = localStorage.getItem(COOKIE_CONSENT_KEY);
+    setHasCookieConsent(storedConsent === 'accepted');
+  }, []);
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem(COOKIE_CONSENT_KEY, 'accepted');
+    setHasCookieConsent(true);
+  };
+
+  const isPolicyPage = location.pathname === '/privacy' || location.pathname === '/terms';
+  const isContentLocked = !hasCookieConsent && !isPolicyPage;
+
+  return (
+    <div className="min-h-screen bg-background relative flex flex-col">
+      <header className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] max-w-2xl ${isContentLocked ? 'pointer-events-none select-none opacity-60' : ''}`}>
+        <nav
+          className="neu-pill px-4 py-2 flex items-center justify-between"
+          role="navigation"
+          aria-label="Main navigation"
+        >
+          <Link
+            to="/"
+            className="flex items-center space-x-2 group outline-none rounded-lg p-1 -m-1"
+            aria-label="Notism - Go to home"
+          >
+            <span className="font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Notism
+            </span>
+          </Link>
+
+          <div className="flex items-center space-x-2">
+            <ThemeToggle />
+            {!isLoading && (
+              isAuthenticated ? (
+                <>
+                  <Link to="/app">
+                    <Button size="sm" className="neu-button">
+                      Open app
+                    </Button>
+                  </Link>
+                  <PublicUserMenu />
+                </>
+              ) : (
+                <Link to="/sign-in">
+                  <Button size="sm" className="neu-button-primary">
+                    Sign in
+                  </Button>
+                </Link>
+              )
+            )}
+          </div>
+        </nav>
+      </header>
+
+      <main className={`container mx-auto px-4 pt-24 pb-8 flex-1 ${isContentLocked ? 'pointer-events-none select-none opacity-60' : ''}`}>
+        <Outlet />
+      </main>
+
+      <footer className="container mx-auto mt-auto px-4 pb-6 text-[0.7rem] text-muted-foreground flex flex-row flex-wrap items-center justify-between gap-3 sm:text-xs">
+        <span>© 2026 Notism</span>
+        <div className="flex items-center gap-4">
+          <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+          <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
+          <a
+            href="mailto:info@notism.one"
+            className="hover:text-foreground transition-colors"
+          >
+            Report a bug
+          </a>
+        </div>
+      </footer>
 
       {!hasCookieConsent && (
         <div className="fixed inset-x-0 bottom-4 z-50 px-4" role="dialog" aria-live="polite">

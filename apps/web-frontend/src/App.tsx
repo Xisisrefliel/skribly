@@ -1,14 +1,19 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { SignIn, SignUp } from '@clerk/clerk-react';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { ClerkProvider } from '@clerk/clerk-react';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { TranscriptionCacheProvider } from '@/contexts/TranscriptionCacheContext';
-import { Layout } from '@/components/Layout';
+import { Layout, PublicLayout } from '@/components/Layout';
 
 const HomePage = lazy(async () => {
   const module = await import('@/pages/HomePage');
   return { default: module.HomePage };
+});
+
+const AuthenticatedHome = lazy(async () => {
+  const module = await import('@/pages/AuthenticatedHome');
+  return { default: module.AuthenticatedHome };
 });
 
 const UploadPage = lazy(async () => {
@@ -31,12 +36,73 @@ const TermsOfServicePage = lazy(async () => {
   return { default: module.TermsOfServicePage };
 });
 
+const SignInPage = lazy(async () => {
+  const module = await import('@clerk/clerk-react');
+  return { default: module.SignIn };
+});
+
+const SignUpPage = lazy(async () => {
+  const module = await import('@clerk/clerk-react');
+  return { default: module.SignUp };
+});
+
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+function ClerkRoot({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+
+  if (!CLERK_PUBLISHABLE_KEY) {
+    throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY environment variable');
+  }
+
+  return (
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      afterSignInUrl="/app"
+      afterSignUpUrl="/app"
+      afterSignOutUrl="/"
+      routerPush={(to) => navigate(to)}
+      routerReplace={(to) => navigate(to, { replace: true })}
+    >
+      {children}
+    </ClerkProvider>
+  );
+}
+
+function ProtectedLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/sign-in" replace />;
+  }
+
+  return <Layout />;
+}
+
+function AppShell() {
+  return (
+    <TranscriptionCacheProvider>
+      <ProtectedLayout />
+    </TranscriptionCacheProvider>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <TranscriptionCacheProvider>
-          <BrowserRouter>
+      <BrowserRouter>
+        <ClerkRoot>
+          <AuthProvider>
             <Suspense
               fallback={(
                 <div className="flex items-center justify-center min-h-[50vh] text-sm text-muted-foreground">
@@ -45,28 +111,31 @@ function App() {
               )}
             >
               <Routes>
+                <Route element={<PublicLayout />}>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                  <Route path="/terms" element={<TermsOfServicePage />} />
+                </Route>
                 <Route path="/sign-in/*" element={
                   <div className="min-h-screen flex items-center justify-center">
-                    <SignIn routing="path" path="/sign-in" />
+                    <SignInPage routing="path" path="/sign-in" />
                   </div>
                 } />
                 <Route path="/sign-up/*" element={
                   <div className="min-h-screen flex items-center justify-center">
-                    <SignUp routing="path" path="/sign-up" />
+                    <SignUpPage routing="path" path="/sign-up" />
                   </div>
                 } />
-                <Route element={<Layout />}>
-                  <Route path="/" element={<HomePage />} />
+                <Route element={<AppShell />}>
+                  <Route path="/app" element={<AuthenticatedHome />} />
                   <Route path="/upload" element={<UploadPage />} />
                   <Route path="/transcription/:id" element={<TranscriptionPage />} />
-                  <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                  <Route path="/terms" element={<TermsOfServicePage />} />
                 </Route>
               </Routes>
             </Suspense>
-          </BrowserRouter>
-        </TranscriptionCacheProvider>
-      </AuthProvider>
+          </AuthProvider>
+        </ClerkRoot>
+      </BrowserRouter>
     </ThemeProvider>
   );
 }

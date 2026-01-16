@@ -696,7 +696,7 @@ export function TranscriptionDetail() {
               <AlertCircle className="h-5 w-5" />
               <p>{error || 'Transcription not found'}</p>
             </div>
-            <Link to="/">
+            <Link to="/app">
               <Button variant="outline" className="neu-button">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Home
@@ -730,7 +730,7 @@ export function TranscriptionDetail() {
         {/* Left sidebar - Back button and Table of Contents (hidden on mobile) */}
         <aside className="toc-sidebar hidden lg:block w-56 flex-shrink-0 sticky top-6 self-start max-h-[calc(100vh-3rem)]">
           <div className="mb-4">
-            <Link to="/">
+            <Link to="/app">
               <Button variant="outline" className="neu-button w-full">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
