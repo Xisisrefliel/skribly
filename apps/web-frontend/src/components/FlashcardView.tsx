@@ -253,22 +253,29 @@ export function FlashcardView({
           </div>
         </CardContent>
 
-        <Drawer 
-          open={isDrawerOpen} 
-          onOpenChange={setIsDrawerOpen} 
-          side="right" 
+        <Drawer
+          open={isDrawerOpen}
+          onOpenChange={setIsDrawerOpen}
+          side="right"
           title="Flashcard Collections"
         >
           <div className="p-4 space-y-4">
-             {decks.length === 0 && isLoadingDecks && (
+             {isRegenerating && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Generating new collection...</p>
+                </div>
+             )}
+
+             {!isRegenerating && decks.length === 0 && isLoadingDecks && (
                 <div className="flex justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
              )}
-             
-             {decks.map((d) => (
-               <div 
-                 key={d.id} 
+
+             {!isRegenerating && decks.map((d, index) => (
+               <div
+                 key={d.id}
                  className={`
                    p-3 rounded-xl border cursor-pointer transition-all duration-200 hover:bg-muted/50
                    ${d.id === deck.id ? 'bg-primary/8 border-primary/40 ring-1 ring-primary/25' : 'bg-card border-border/50'}
@@ -276,9 +283,12 @@ export function FlashcardView({
                  onClick={() => handleSelectDeck(d)}
                >
                  <div className="flex justify-between items-start mb-1">
-                   <h3 className="font-medium text-sm line-clamp-1">{d.title}</h3>
+                   <div className="flex items-center gap-2 min-w-0">
+                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0">#{decks.length - index}</Badge>
+                     <h3 className="font-medium text-sm line-clamp-1">{d.title}</h3>
+                   </div>
                    {d.id === deck.id && (
-                     <Badge variant="secondary" className="text-[10px] h-5 px-1.5">Current</Badge>
+                     <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">Current</Badge>
                    )}
                  </div>
                  <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -294,13 +304,9 @@ export function FlashcardView({
                </div>
              ))}
 
-             {onRegenerate && (
-               <Button 
-                 onClick={() => {
-                   setIsDrawerOpen(false);
-                   onRegenerate();
-                 }} 
-                 disabled={isRegenerating}
+             {onRegenerate && !isRegenerating && (
+               <Button
+                 onClick={onRegenerate}
                  className="w-full mt-4 neu-button"
                  variant="outline"
                >
@@ -542,22 +548,29 @@ export function FlashcardView({
         </div>
       </CardContent>
 
-      <Drawer 
-        open={isDrawerOpen} 
-        onOpenChange={setIsDrawerOpen} 
-        side="right" 
+      <Drawer
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+        side="right"
         title="Flashcard Collections"
       >
         <div className="p-4 space-y-4">
-           {decks.length === 0 && isLoadingDecks && (
+           {isRegenerating && (
+              <div className="flex flex-col items-center justify-center py-8 space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Generating new collection...</p>
+              </div>
+           )}
+
+           {!isRegenerating && decks.length === 0 && isLoadingDecks && (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
            )}
-           
-           {decks.map((d) => (
-             <div 
-               key={d.id} 
+
+           {!isRegenerating && decks.map((d, index) => (
+             <div
+               key={d.id}
                className={`
                  p-3 rounded-xl border cursor-pointer transition-all duration-200 hover:bg-muted/50
                  ${d.id === deck.id ? 'bg-primary/8 border-primary/40 ring-1 ring-primary/25' : 'bg-card border-border/50'}
@@ -565,9 +578,12 @@ export function FlashcardView({
                onClick={() => handleSelectDeck(d)}
              >
                <div className="flex justify-between items-start mb-1">
-                 <h3 className="font-medium text-sm line-clamp-1">{d.title}</h3>
+                 <div className="flex items-center gap-2 min-w-0">
+                   <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0">#{decks.length - index}</Badge>
+                   <h3 className="font-medium text-sm line-clamp-1">{d.title}</h3>
+                 </div>
                  {d.id === deck.id && (
-                   <Badge variant="secondary" className="text-[10px] h-5 px-1.5">Current</Badge>
+                   <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">Current</Badge>
                  )}
                </div>
                <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -583,13 +599,9 @@ export function FlashcardView({
              </div>
            ))}
 
-           {onRegenerate && (
-             <Button 
-               onClick={() => {
-                 setIsDrawerOpen(false);
-                 onRegenerate();
-               }} 
-               disabled={isRegenerating}
+           {onRegenerate && !isRegenerating && (
+             <Button
+               onClick={onRegenerate}
                className="w-full mt-4 neu-button"
                variant="outline"
              >
