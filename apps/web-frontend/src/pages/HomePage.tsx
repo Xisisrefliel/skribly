@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   ClipboardCheck,
   FolderOpen,
   Layers,
@@ -60,13 +59,8 @@ export function HomePage() {
               </p>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <Link to="/sign-in">
-                  <Button
-                    variant="default"
-                    size="xl"
-                    className="group relative inline-flex items-center justify-center gap-2 px-10 py-4 text-base font-semibold text-white rounded-[1.25rem] bg-gradient-to-br from-primary/90 to-primary/70 text-shadow-[0_4px_30px_rgba(0,0,0,0.35)] shadow-[0_20px_40px_rgba(0,0,0,0.25)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_25px_45px_rgba(0,0,0,0.35)] active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/40"
-                  >
-                    <span>Start in minutes</span>
-                    <ArrowRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-1" />
+                  <Button size="lg" className="neu-button-primary">
+                    Try free — 3 generations on us
                   </Button>
                 </Link>
               </div>

@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const handleSignOut = async () => {
-    await clerkSignOut();
+    await clerkSignOut({ redirectUrl: '/' });
   };
 
   return (

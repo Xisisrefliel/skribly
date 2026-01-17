@@ -6,6 +6,15 @@ const D1_API_TOKEN = process.env.D1_API_TOKEN!;
 
 const D1_API_URL = `https://api.cloudflare.com/client/v4/accounts/${D1_ACCOUNT_ID}/d1/database/${D1_DATABASE_ID}/query`;
 
+// Retry configuration for transient errors
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+const RETRYABLE_STATUS_CODES = [500, 502, 503, 504, 429];
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 interface D1Response<T> {
   success: boolean;
   errors: Array<{ message: string }>;
@@ -16,27 +25,57 @@ interface D1Response<T> {
 }
 
 async function executeQuery<T>(sql: string, params: unknown[] = []): Promise<T[]> {
-  const response = await fetch(D1_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${D1_API_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ sql, params }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`D1 API error: ${response.status} - ${text}`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(D1_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${D1_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sql, params }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        const error = new Error(`D1 API error: ${response.status} - ${text}`);
+
+        // Retry on transient errors
+        if (RETRYABLE_STATUS_CODES.includes(response.status) && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`D1 API returned ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await sleep(delay);
+          lastError = error;
+          continue;
+        }
+
+        throw error;
+      }
+
+      const data = await response.json() as D1Response<T>;
+
+      if (!data.success) {
+        throw new Error(`D1 query failed: ${data.errors.map(e => e.message).join(', ')}`);
+      }
+
+      return data.result[0]?.results || [];
+    } catch (error) {
+      // Handle network errors (fetch failures) with retry
+      if (error instanceof TypeError && attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        console.warn(`D1 API network error, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES}):`, error);
+        await sleep(delay);
+        lastError = error;
+        continue;
+      }
+      throw error;
+    }
   }
 
-  const data = await response.json() as D1Response<T>;
-  
-  if (!data.success) {
-    throw new Error(`D1 query failed: ${data.errors.map(e => e.message).join(', ')}`);
-  }
-
-  return data.result[0]?.results || [];
+  // Should not reach here, but throw last error if we do
+  throw lastError || new Error('D1 API request failed after all retries');
 }
 
 // Database row type (snake_case from DB)

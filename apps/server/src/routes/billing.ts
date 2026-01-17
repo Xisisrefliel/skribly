@@ -52,7 +52,7 @@ router.get('/billing/status', async (req: Request, res: Response): Promise<void>
     const subscription = await d1Service.getSubscriptionByUser(userId);
     const isActive = await d1Service.isSubscriptionActive(userId);
     const transcriptionCount = await d1Service.getTranscriptionCountByUser(userId);
-    const freeLimit = 1;
+    const freeLimit = 3;
 
     res.json({
       isActive,

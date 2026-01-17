@@ -70,14 +70,14 @@ export function UploadPage() {
                 <p className="text-xs text-foreground/80">
                   {billingStatus.hasFreeTierAvailable ? (
                     <>
-                      You have <span className="font-semibold">{billingStatus.freeLimit - billingStatus.transcriptionCount} free transcription</span> remaining.
+                      You have <span className="font-semibold">{billingStatus.freeLimit - billingStatus.transcriptionCount} free transcription{billingStatus.freeLimit - billingStatus.transcriptionCount !== 1 ? 's' : ''}</span> remaining.
                       <Link to="/settings" className="text-status-info font-medium hover:underline ml-1">
                         Subscribe
                       </Link> for unlimited access.
                     </>
                   ) : (
                     <>
-                      You've used your free transcription.{' '}
+                      You've used your {billingStatus.freeLimit} free transcriptions.{' '}
                       <Link to="/settings" className="text-status-info font-medium hover:underline">
                         Subscribe
                       </Link> to continue transcribing.

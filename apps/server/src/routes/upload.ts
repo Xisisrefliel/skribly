@@ -63,14 +63,14 @@ async function requireActiveSubscription(req: Request, res: Response, next: Next
     const userId = req.userId!;
     const isActive = await d1Service.isSubscriptionActive(userId);
 
-    // Allow 1 free transcription for users without subscription
+    // Allow 3 free transcriptions for users without subscription
     if (!isActive) {
       const transcriptionCount = await d1Service.getTranscriptionCountByUser(userId);
-      if (transcriptionCount >= 1) {
+      if (transcriptionCount >= 3) {
         res.status(402).json({
           error: 'Subscription required',
-          message: 'You have used your free transcription. Please subscribe to continue.',
-          freeLimit: 1,
+          message: 'You have used your 3 free transcriptions. Please subscribe to continue.',
+          freeLimit: 3,
           currentCount: transcriptionCount,
         });
         return;
