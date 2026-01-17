@@ -11,6 +11,8 @@ struct UploadView: View {
     @State private var showUploadConfirmation = false
     @State private var error: String?
     @State private var showError = false
+    @State private var billingStatus: BillingStatusResponse?
+    @State private var isBillingLoading = true
 
     enum TranscriptionMode: String, CaseIterable {
         case fast = "Fast"
@@ -20,36 +22,31 @@ struct UploadView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Header
-                        headerSection
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.05, green: 0.05, blue: 0.1, alpha: 1) : UIColor(red: 0.98, green: 0.98, blue: 1, alpha: 1) }),
+                        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.08, green: 0.06, blue: 0.15, alpha: 1) : UIColor(red: 0.95, green: 0.96, blue: 1, alpha: 1) })
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
 
-                        // Transcription Mode Toggle
-                        modeToggleSection
-
-                        // File Selection Area
-                        fileSelectionArea
-
-                        // Title Input
-                        titleInputSection
-
-                        // Upload Button
-                        uploadButtonSection
-
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 20)
-                }
-
-                // Upload Progress Overlay
-                if store.isUploading {
-                    uploadProgressOverlay
+                if isBillingLoading {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                } else if let billingStatus = billingStatus, !billingStatus.isActive {
+                    subscriptionRequiredView
+                } else {
+                    uploadContentView
                 }
             }
             .navigationTitle("Upload Recording")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                await fetchBillingStatus()
+            }
         }
         .fileImporter(
             isPresented: $showFilePicker,
@@ -82,255 +79,388 @@ struct UploadView: View {
         }
     }
 
-    // MARK: - Header Section
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.status(.purple))
-                    .frame(width: 40, height: 40)
-                    .background(Color.status(.purpleSoft))
-                    .cornerRadius(12)
+    // MARK: - Subscription Required View
+    private var subscriptionRequiredView: some View {
+        VStack(spacing: 24) {
+            Spacer()
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Upload Recording")
-                        .font(.system(.headline, design: .default))
-                    Text("Add a new recording to transcribe")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-            }
-            .padding()
-            .background(Color.systemBackground)
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.border, lineWidth: 1)
-            )
-        }
-    }
+            VStack(spacing: 12) {
+                Image(systemName: "lock.circle.fill")
+                    .font(.system(size: 64))
+                    .foregroundColor(.blue)
+                    .opacity(0.8)
 
-    // MARK: - Mode Toggle Section
-    private var modeToggleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Transcription Mode")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text("Choose speed vs accuracy")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+                VStack(spacing: 8) {
+                    Text("Notism Pro")
+                        .font(.title2)
+                        .fontWeight(.bold)
 
-            HStack(spacing: 12) {
-                ForEach(TranscriptionMode.allCases, id: \.self) { mode in
-                    Button(action: { transcriptionMode = mode }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: mode == .fast ? "bolt.fill" : "sparkles")
-                            Text(mode.rawValue)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    Text("You've used your 3 free transcriptions")
                         .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(transcriptionMode == mode ? .white : .secondary)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(transcriptionMode == mode
-                                    ? (mode == .fast ? Color.status(.warning) : Color.status(.purple))
-                                    : Color.systemGray6
-                                )
-                        )
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.vertical, 20)
+
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Unlimited transcriptions")
+                            .font(.subheadline)
+                    }
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("AI-powered study notes")
+                            .font(.subheadline)
+                    }
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Quiz & flashcard generation")
+                            .font(.subheadline)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .background(Color.white.opacity(0.5))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                )
             }
+
+            VStack(spacing: 12) {
+                VStack(spacing: 4) {
+                    Text("$4.99")
+                        .font(.system(size: 42, weight: .bold, design: .default))
+
+                    Text("per month")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                NavigationLink(destination: EmptyView()) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "creditcard.fill")
+                        Text("Subscribe Now")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundColor(.white)
+                    .background(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.blue.opacity(0.8),
+                                Color.blue.opacity(0.6)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(12)
+                    .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
+            }
+            .padding(.horizontal)
+
+            Spacer()
         }
-        .padding()
-        .background(Color.systemBackground)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.border, lineWidth: 1)
-        )
+        .padding(.vertical, 24)
     }
 
-    // MARK: - File Selection Area
-    private var fileSelectionArea: some View {
-        VStack(spacing: 16) {
-            Button(action: { showFilePicker = true }) {
-                VStack(spacing: 12) {
-                    if let fileName = selectedFileName.split(separator: "/").last {
-                        VStack(spacing: 8) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.status(.success))
+    // MARK: - Upload Content View
+    private var uploadContentView: some View {
+        ZStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                                .opacity(0.8)
 
-                                Text(String(fileName))
-                                    .lineLimit(1)
-                                    .font(.subheadline)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Add Recording")
+                                    .font(.headline)
                                     .foregroundColor(.primary)
-                                    .truncationMode(.tail)
 
-                                Spacer()
-                            }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                            .background(Color.status(.successSoft))
-                            .cornerRadius(12)
-                        }
-                    } else {
-                        VStack(spacing: 16) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "arrow.down.doc")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(.secondary)
-
-                                Text("Drop files here or click to browse")
-                                    .font(.body)
-                                    .fontWeight(.semibold)
-
-                                Text("Upload recordings or documents to generate study notes")
+                                Text("Upload audio, video, or documents")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
                             }
 
-                            VStack(spacing: 8) {
-                                HStack(spacing: 8) {
-                                    ForEach(["MP3", "M4A", "WAV", "MP4", "PDF", "PPTX", "DOCX"], id: \.self) { format in
-                                        Text(format)
-                                            .font(.caption2)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.secondary)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(Color.systemGray6)
-                                            .cornerRadius(8)
+                            Spacer()
+                        }
+                        .padding(16)
+                        .background(Color.white.opacity(0.4))
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+
+                    // Transcription Mode Toggle
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Transcription Mode")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+
+                        HStack(spacing: 12) {
+                            ForEach(TranscriptionMode.allCases, id: \.self) { mode in
+                                Button(action: { transcriptionMode = mode }) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: mode == .fast ? "bolt.fill" : "sparkles")
+                                            .font(.body)
+
+                                        Text(mode.rawValue)
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
                                     }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .foregroundColor(transcriptionMode == mode ? .white : .secondary)
+                                    .background(
+                                        transcriptionMode == mode
+                                            ? LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    mode == .fast ? Color.orange.opacity(0.7) : Color.blue.opacity(0.7),
+                                                    mode == .fast ? Color.orange.opacity(0.5) : Color.blue.opacity(0.5)
+                                                ]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                            : LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    Color.white.opacity(0.2),
+                                                    Color.white.opacity(0.1)
+                                                ]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                    )
+                                    .cornerRadius(12)
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
                     }
+                    .padding(16)
+                    .background(Color.white.opacity(0.4))
+                    .cornerRadius(14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    )
+
+                    // File Selection Area
+                    Button(action: { showFilePicker = true }) {
+                        VStack(spacing: 12) {
+                            if let fileName = selectedFileName.split(separator: "/").last {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(.green)
+
+                                    Text(String(fileName))
+                                        .lineLimit(1)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+
+                                    Spacer()
+                                }
+                                .padding(14)
+                                .background(Color.green.opacity(0.1))
+                                .cornerRadius(12)
+                            } else {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "arrow.down.doc")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.blue)
+                                        .opacity(0.6)
+
+                                    VStack(spacing: 4) {
+                                        Text("Drop files or tap to browse")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+
+                                        Text("Supports audio, video & documents")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    HStack(spacing: 6) {
+                                        ForEach(["MP3", "WAV", "MP4", "PDF"], id: \.self) { format in
+                                            Text(format)
+                                                .font(.caption2)
+                                                .fontWeight(.medium)
+                                                .foregroundColor(.secondary)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color.white.opacity(0.3))
+                                                .cornerRadius(6)
+                                        }
+                                        Spacer()
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 20)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(16)
+                        .background(Color.white.opacity(0.3))
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                                .foregroundColor(Color.white.opacity(0.4))
+                        )
+                    }
+
+                    // Title Input
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Title")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+
+                        TextField("Enter title for your recording", text: $uploadTitle)
+                            .font(.body)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.4))
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.3))
+                    .cornerRadius(14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    )
+
+                    // Upload Button
+                    Button(action: {
+                        guard selectedFileURL != nil else {
+                            error = "Please select a file to upload"
+                            showError = true
+                            return
+                        }
+
+                        if uploadTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                            error = "Please enter a title for your recording"
+                            showError = true
+                            return
+                        }
+
+                        showUploadConfirmation = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.up")
+                            Text("Generate Notes")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundColor(.white)
+                        .background(
+                            selectedFileURL != nil && !uploadTitle.isEmpty
+                                ? LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color.blue.opacity(0.8),
+                                        Color.blue.opacity(0.6)
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color.gray.opacity(0.4),
+                                        Color.gray.opacity(0.3)
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                        )
+                        .cornerRadius(12)
+                        .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .disabled(selectedFileURL == nil || uploadTitle.isEmpty)
+                    .padding(16)
+                    .background(Color.white.opacity(0.3))
+                    .cornerRadius(14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    )
+
+                    Spacer(minLength: 20)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 20)
+            }
+
+            // Upload Progress Overlay
+            if store.isUploading {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        ProgressView(value: store.uploadProgress)
+                            .tint(.blue)
+
+                        VStack(spacing: 4) {
+                            Text("Generating notes...")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+
+                            Text("\(Int(store.uploadProgress * 100))%")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(20)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(16)
+                    .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 8)
+                    .padding()
                 }
             }
-            .frame(maxWidth: .infinity)
-            .background(Color.systemBackground)
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [4]))
-                    .foregroundColor(Color.border)
-            )
         }
     }
 
-    // MARK: - Title Input Section
-    private var titleInputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(selectedFileURL != nil ? "Batch Title" : "Title")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            TextField("Enter a title for your recording", text: $uploadTitle)
-                .font(.body)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-                .background(Color.systemBackground)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.border, lineWidth: 1)
-                )
+    // MARK: - Methods
+    private func fetchBillingStatus() async {
+        do {
+            billingStatus = try await APIClient.shared.getBillingStatus()
+        } catch {
+            print("Failed to fetch billing status: \(error)")
         }
-        .padding()
-        .background(Color.systemBackground)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.border, lineWidth: 1)
-        )
+        isBillingLoading = false
     }
 
-    // MARK: - Upload Button Section
-    private var uploadButtonSection: some View {
-        Button(action: {
-            guard selectedFileURL != nil else {
-                error = "Please select a file to upload"
-                showError = true
-                return
-            }
-
-            if uploadTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-                error = "Please enter a title for your recording"
-                showError = true
-                return
-            }
-
-            showUploadConfirmation = true
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.up")
-                Text("Generate Notes")
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .font(.body)
-            .fontWeight(.semibold)
-            .foregroundColor(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(selectedFileURL != nil && !uploadTitle.isEmpty ? Color.primary : Color.systemGray4)
-            )
-        }
-        .disabled(selectedFileURL == nil || uploadTitle.isEmpty)
-        .padding()
-        .background(Color.systemBackground)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.border, lineWidth: 1)
-        )
-    }
-
-    // MARK: - Upload Progress Overlay
-    private var uploadProgressOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.3)
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView(value: store.uploadProgress)
-                    .scaleEffect(1.2, anchor: .center)
-
-                VStack(spacing: 4) {
-                    Text("Generating notes for \(selectedFileName.split(separator: "/").last ?? "file")...")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-
-                    Text("\(Int(store.uploadProgress * 100))%")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(20)
-            .background(Color.systemBackground)
-            .cornerRadius(16)
-            .shadow(radius: 8)
-        }
-    }
-
-    // MARK: - File Handling
     private func handleFileSelection(_ result: Result<[URL], Error>) {
         do {
             let urls = try result.get()
             guard let fileURL = urls.first else { return }
 
-            // Check if we can access the file
             guard fileURL.startAccessingSecurityScopedResource() else {
                 error = "Unable to access the selected file"
                 showError = true
@@ -342,7 +472,6 @@ struct UploadView: View {
             selectedFileURL = fileURL
             selectedFileName = fileURL.lastPathComponent
 
-            // Pre-fill title from filename
             if uploadTitle.isEmpty {
                 uploadTitle = fileURL.deletingPathExtension().lastPathComponent
             }
@@ -356,13 +485,11 @@ struct UploadView: View {
         guard let fileURL = selectedFileURL else { return }
 
         let title = uploadTitle.trimmingCharacters(in: .whitespaces)
-        let mode: String = transcriptionMode == .fast ? "fast" : "quality"
 
         Task {
             do {
                 _ = try await store.uploadAudio(fileURL: fileURL, title: title)
 
-                // Reset form on success
                 selectedFileURL = nil
                 selectedFileName = ""
                 uploadTitle = ""
@@ -372,44 +499,6 @@ struct UploadView: View {
                 showError = true
             }
         }
-    }
-}
-
-// MARK: - Color Extensions
-extension Color {
-    static func status(_ type: StatusColorType) -> Color {
-        switch type {
-        case .purple:
-            return Color(red: 0.7, green: 0.4, blue: 0.9)
-        case .purpleSoft:
-            return Color(red: 0.7, green: 0.4, blue: 0.9).opacity(0.15)
-        case .warning:
-            return Color(red: 1.0, green: 0.7, blue: 0.0)
-        case .success:
-            return Color(red: 0.2, green: 0.8, blue: 0.4)
-        case .successSoft:
-            return Color(red: 0.2, green: 0.8, blue: 0.4).opacity(0.15)
-        }
-    }
-
-    static var border: Color {
-        Color.gray.opacity(0.4)
-    }
-
-    static var systemBackground: Color {
-        Color(UIColor.systemBackground)
-    }
-
-    static var systemGray4: Color {
-        Color(UIColor.systemGray4)
-    }
-
-    static var systemGray6: Color {
-        Color(UIColor.systemGray6)
-    }
-
-    enum StatusColorType {
-        case purple, purpleSoft, warning, success, successSoft
     }
 }
 

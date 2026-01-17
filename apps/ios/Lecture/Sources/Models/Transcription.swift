@@ -97,3 +97,13 @@ struct PDFResponse: Codable {
     let pdfUrl: String
     let message: String
 }
+
+struct BillingStatusResponse: Codable {
+    let isActive: Bool
+    let status: String?
+    let currentPeriodEnd: String?
+    let cancelAtPeriodEnd: Bool
+    let transcriptionCount: Int
+    let freeLimit: Int
+    let hasFreeTierAvailable: Bool
+}

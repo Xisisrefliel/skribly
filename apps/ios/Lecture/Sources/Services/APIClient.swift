@@ -310,6 +310,16 @@ class APIClient {
         return cacheDir
     }
 
+    func getBillingStatus() async throws -> BillingStatusResponse {
+        let url = try buildURL(path: "/api/billing/status")
+        let request = try await authorizedRequest(url: url)
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+
+        return try decoder.decode(BillingStatusResponse.self, from: data)
+    }
+
     // MARK: - Helpers
 
     private func buildURL(path: String) throws -> URL {
