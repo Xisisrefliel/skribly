@@ -56,20 +56,5 @@
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
-    <!-- Google Sign-In Configuration -->
-    <key>GIDClientID</key>
-    <string>409393189725-2hv6dtkilq1he2c92iseoqhpv448kovj.apps.googleusercontent.com</string>
-    <!-- URL Schemes for Google Sign-In callback -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>com.googleusercontent.apps.409393189725-2hv6dtkilq1he2c92iseoqhpv448kovj</string>
-            </array>
-            <key>CFBundleURLName</key>
-            <string>Google Sign-In</string>
-        </dict>
-    </array>
 </dict>
 </plist>

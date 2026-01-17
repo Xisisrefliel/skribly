@@ -240,6 +240,7 @@
 				E11111110000000000000011 /* OnboardingView.swift in Sources */,
 				E11111110000000000000013 /* AuthService.swift in Sources */,
 				E11111110000000000000014 /* SignInView.swift in Sources */,
+				E11111110000000000000015 /* UploadView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
