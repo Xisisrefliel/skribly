@@ -103,7 +103,7 @@ struct UploadView: View {
                 Spacer()
             }
             .padding()
-            .background(Color(.systemBackground))
+            .background(Color.systemBackground)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
@@ -140,7 +140,7 @@ struct UploadView: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(transcriptionMode == mode
                                     ? (mode == .fast ? Color.status(.warning) : Color.status(.purple))
-                                    : Color(.systemGray6)
+                                    : Color.systemGray6
                                 )
                         )
                     }
@@ -148,7 +148,7 @@ struct UploadView: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.systemBackground)
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -207,7 +207,7 @@ struct UploadView: View {
                                             .foregroundColor(.secondary)
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 6)
-                                            .background(Color(.systemGray6))
+                                            .background(Color.systemGray6)
                                             .cornerRadius(8)
                                     }
                                 }
@@ -219,7 +219,7 @@ struct UploadView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .background(Color(.systemBackground))
+            .background(Color.systemBackground)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
@@ -240,7 +240,7 @@ struct UploadView: View {
                 .font(.body)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 12)
-                .background(Color(.systemBackground))
+                .background(Color.systemBackground)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
@@ -248,7 +248,7 @@ struct UploadView: View {
                 )
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.systemBackground)
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -284,12 +284,12 @@ struct UploadView: View {
             .foregroundColor(.white)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(selectedFileURL != nil && !uploadTitle.isEmpty ? Color.primary : Color(.systemGray4))
+                    .fill(selectedFileURL != nil && !uploadTitle.isEmpty ? Color.primary : Color.systemGray4)
             )
         }
         .disabled(selectedFileURL == nil || uploadTitle.isEmpty)
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.systemBackground)
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -318,7 +318,7 @@ struct UploadView: View {
                 }
             }
             .padding(20)
-            .background(Color(.systemBackground))
+            .background(Color.systemBackground)
             .cornerRadius(16)
             .shadow(radius: 8)
         }
@@ -393,7 +393,19 @@ extension Color {
     }
 
     static var border: Color {
-        Color(.systemGray4)
+        Color.gray.opacity(0.4)
+    }
+
+    static var systemBackground: Color {
+        Color(UIColor.systemBackground)
+    }
+
+    static var systemGray4: Color {
+        Color(UIColor.systemGray4)
+    }
+
+    static var systemGray6: Color {
+        Color(UIColor.systemGray6)
     }
 
     enum StatusColorType {
