@@ -60,7 +60,7 @@ function UserMenu({
   if (!user) return null;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" className="neu-button-subtle">
           <Avatar className="h-8 w-8">
@@ -112,7 +112,7 @@ function PublicUserMenu() {
   if (!user) return null;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" className="neu-button-subtle">
           <Avatar className="h-8 w-8">
