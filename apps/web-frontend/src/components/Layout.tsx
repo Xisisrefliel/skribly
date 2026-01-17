@@ -24,17 +24,17 @@ function ThemeToggle() {
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="icon-sm"
       onClick={toggleTheme}
-      className="neu-button-subtle transition-transform hover:scale-105"
+      className="neu-button"
       aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
     >
       <span className="sr-only">Toggle theme</span>
       {theme === 'light' ? (
-        <Moon className="h-4 w-4 transition-transform" />
+        <Moon className="h-4 w-4" />
       ) : (
-        <Sun className="h-4 w-4 transition-transform" />
+        <Sun className="h-4 w-4" />
       )}
     </Button>
   );
