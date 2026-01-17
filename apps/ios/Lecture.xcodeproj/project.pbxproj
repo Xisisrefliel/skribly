@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		17D979C52F11D91A00E3DAC2 /* Lecture.icon in Resources */ = {isa = PBXBuildFile; fileRef = 17D979C42F11D91900E3DAC2 /* Lecture.icon */; };
+		17DA7E202F1B2F06007FE1AB /* Clerk in Frameworks */ = {isa = PBXBuildFile; productRef = 17DA7E1F2F1B2F06007FE1AB /* Clerk */; };
 		E11111110000000000000001 /* LectureApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000001 /* LectureApp.swift */; };
 		E11111110000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000002 /* ContentView.swift */; };
 		E11111110000000000000003 /* Transcription.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000003 /* Transcription.swift */; };
@@ -21,8 +22,7 @@
 		E11111110000000000000011 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000012 /* OnboardingView.swift */; };
 		E11111110000000000000013 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000013 /* AuthService.swift */; };
 		E11111110000000000000014 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000014 /* SignInView.swift */; };
-		E11111110000000000000015 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E18000000000000000000001 /* GoogleSignIn */; };
-		E11111110000000000000016 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E18000000000000000000002 /* GoogleSignInSwift */; };
+		E11111110000000000000015 /* UploadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000015 /* UploadView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +42,7 @@
 		E10000000000000000000012 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E10000000000000000000013 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		E10000000000000000000014 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		E10000000000000000000015 /* UploadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,8 +50,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E11111110000000000000015 /* GoogleSignIn in Frameworks */,
-				E11111110000000000000016 /* GoogleSignInSwift in Frameworks */,
+				17DA7E202F1B2F06007FE1AB /* Clerk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +139,7 @@
 				E10000000000000000000009 /* SettingsView.swift */,
 				E10000000000000000000014 /* SignInView.swift */,
 				E10000000000000000000008 /* TranscriptionDetailView.swift */,
+				E10000000000000000000015 /* UploadView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -168,8 +169,7 @@
 			);
 			name = Lecture;
 			packageProductDependencies = (
-				E18000000000000000000001 /* GoogleSignIn */,
-				E18000000000000000000002 /* GoogleSignInSwift */,
+				17DA7E1F2F1B2F06007FE1AB /* Clerk */,
 			);
 			productName = Lecture;
 			productReference = E10000000000000000000000 /* Lecture.app */;
@@ -200,7 +200,7 @@
 			);
 			mainGroup = E13000000000000000000001;
 			packageReferences = (
-				E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				E19000000000000000000001 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
 			productRefGroup = E13000000000000000000003 /* Products */;
 			projectDirPath = "";
@@ -238,7 +238,7 @@
 				E11111110000000000000008 /* TranscriptionDetailView.swift in Sources */,
 				E11111110000000000000009 /* SettingsView.swift in Sources */,
 				E11111110000000000000011 /* OnboardingView.swift in Sources */,
-				E11111110000000000000013 /* AuthManager.swift in Sources */,
+				E11111110000000000000013 /* AuthService.swift in Sources */,
 				E11111110000000000000014 /* SignInView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -449,26 +449,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+		E19000000000000000000001 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			repositoryURL = "https://github.com/clerk/clerk-ios";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 8.0.0;
+				minimumVersion = 0.53.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E18000000000000000000001 /* GoogleSignIn */ = {
+		17DA7E1F2F1B2F06007FE1AB /* Clerk */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignIn;
-		};
-		E18000000000000000000002 /* GoogleSignInSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E19000000000000000000001 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignInSwift;
+			package = E19000000000000000000001 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = Clerk;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
