@@ -14,6 +14,7 @@ struct UploadView: View {
     @State private var billingStatus: BillingStatusResponse?
     @State private var isBillingLoading = true
     @State private var debugBypassBilling = false
+    @State private var hasSecurityScopedAccess = false
 
     enum TranscriptionMode: String, CaseIterable {
         case fast = "Fast"
@@ -79,6 +80,11 @@ struct UploadView: View {
         }
         .alert("Confirm Upload", isPresented: $showUploadConfirmation) {
             Button("Cancel", role: .cancel) {
+                // Stop security-scoped access if user cancels
+                if hasSecurityScopedAccess, let fileURL = selectedFileURL {
+                    fileURL.stopAccessingSecurityScopedResource()
+                    hasSecurityScopedAccess = false
+                }
                 selectedFileURL = nil
                 selectedFileName = ""
             }
@@ -469,8 +475,8 @@ struct UploadView: View {
                 return
             }
 
-            defer { fileURL.stopAccessingSecurityScopedResource() }
-
+            // Keep the security-scoped access open until upload completes
+            hasSecurityScopedAccess = true
             selectedFileURL = fileURL
             selectedFileName = fileURL.lastPathComponent
 
@@ -492,6 +498,12 @@ struct UploadView: View {
             do {
                 _ = try await store.uploadAudio(fileURL: fileURL, title: title)
 
+                // Stop security-scoped access after successful upload
+                if hasSecurityScopedAccess {
+                    fileURL.stopAccessingSecurityScopedResource()
+                    hasSecurityScopedAccess = false
+                }
+
                 selectedFileURL = nil
                 selectedFileName = ""
                 uploadTitle = ""
@@ -499,6 +511,12 @@ struct UploadView: View {
             } catch {
                 self.error = error.localizedDescription
                 showError = true
+
+                // Stop security-scoped access on error too
+                if hasSecurityScopedAccess {
+                    fileURL.stopAccessingSecurityScopedResource()
+                    hasSecurityScopedAccess = false
+                }
             }
         }
     }
