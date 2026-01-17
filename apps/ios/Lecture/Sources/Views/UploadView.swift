@@ -13,6 +13,7 @@ struct UploadView: View {
     @State private var showError = false
     @State private var billingStatus: BillingStatusResponse?
     @State private var isBillingLoading = true
+    @State private var debugBypassBilling = false
 
     enum TranscriptionMode: String, CaseIterable {
         case fast = "Fast"
@@ -36,7 +37,7 @@ struct UploadView: View {
                 if isBillingLoading {
                     ProgressView()
                         .scaleEffect(1.5)
-                } else if let billingStatus = billingStatus, !billingStatus.isActive {
+                } else if let billingStatus = billingStatus, !billingStatus.isActive, !debugBypassBilling {
                     subscriptionRequiredView
                 } else {
                     uploadContentView
@@ -44,6 +45,16 @@ struct UploadView: View {
             }
             .navigationTitle("Upload Recording")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                #if DEBUG
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { debugBypassBilling.toggle() }) {
+                        Image(systemName: debugBypassBilling ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(debugBypassBilling ? .green : .gray)
+                    }
+                }
+                #endif
+            }
             .task {
                 await fetchBillingStatus()
             }
@@ -155,18 +166,9 @@ struct UploadView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .foregroundColor(.white)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.blue.opacity(0.8),
-                                Color.blue.opacity(0.6)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .background(Color.black)
                     .cornerRadius(12)
-                    .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
                 }
             }
             .padding(.horizontal)
