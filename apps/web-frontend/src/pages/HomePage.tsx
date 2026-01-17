@@ -16,8 +16,8 @@ export function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-sm text-muted-foreground">
-        Loading…
+      <div className="relative overflow-hidden min-h-screen w-full flex flex-col items-center justify-center">
+        <span className="text-sm text-muted-foreground">Loading…</span>
       </div>
     );
   }
@@ -57,12 +57,15 @@ export function HomePage() {
               <p className="text-lg md:text-xl text-muted-foreground max-w-2xl leading-relaxed">
                 Upload a session, a slide deck, or a doc; walk away with clean transcripts, calm summaries, and ready-to-use flashcards. Less chrome, more clarity.
               </p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex flex-col items-start gap-3">
                 <Link to="/sign-in">
                   <Button size="lg" className="neu-button-primary">
                     Try free — 3 generations on us
                   </Button>
                 </Link>
+                <p className="text-sm text-muted-foreground">
+                  Then $4.99/month for unlimited access. Cancel anytime.
+                </p>
               </div>
             </div>
 

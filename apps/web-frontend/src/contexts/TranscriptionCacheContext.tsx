@@ -15,6 +15,7 @@ const TRANSCRIPTIONS_STORAGE_KEY = 'lecture:transcriptions-cache:v1';
 const TAGS_STORAGE_KEY = 'lecture:tags-cache:v1';
 const FOLDERS_STORAGE_KEY = 'lecture:folders-cache:v1';
 const CACHE_BUILD_ID_KEY = 'lecture:cache-build-id';
+const CACHE_USER_ID_KEY = 'lecture:cache-user-id';
 const CURRENT_BUILD_ID = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
 
 const clearCacheStorage = () => {
@@ -25,6 +26,7 @@ const clearCacheStorage = () => {
   window.localStorage.removeItem(TRANSCRIPTIONS_STORAGE_KEY);
   window.localStorage.removeItem(TAGS_STORAGE_KEY);
   window.localStorage.removeItem(FOLDERS_STORAGE_KEY);
+  window.localStorage.removeItem(CACHE_USER_ID_KEY);
 };
 
 const shouldInvalidateCache = (): boolean => {
@@ -216,7 +218,7 @@ const sanitizeTranscriptionUpdates = (updates: Partial<Transcription>): Partial<
 };
 
 export function TranscriptionCacheProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, getToken } = useAuth();
+  const { isAuthenticated, getToken, user } = useAuth();
 
   // Transcriptions cache
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionCacheEntry>>(loadStoredTranscriptions);
@@ -240,6 +242,32 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   useEffect(() => {
     setCacheBuildId();
   }, []);
+
+  // Clear cache when user changes (handles sign-out, sign-in as different user, or Clerk ID changes)
+  const [cacheUserValidated, setCacheUserValidated] = useState(false);
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    const storedUserId = window.localStorage.getItem(CACHE_USER_ID_KEY);
+
+    // If cache is from a different user, clear it
+    if (storedUserId && storedUserId !== user.id) {
+      console.log('[Cache] User ID mismatch, clearing stale cache from different user');
+      setTranscriptions({});
+      setTranscriptionDetails({});
+      setTags([]);
+      setTagsLoaded(false);
+      setFolders([]);
+      setFoldersLoaded(false);
+      clearCacheStorage();
+    }
+
+    // Store current user ID for future validation
+    window.localStorage.setItem(CACHE_USER_ID_KEY, user.id);
+    setCacheUserValidated(true);
+  }, [user?.id]);
 
   const hasActiveTranscriptions = Object.values(transcriptions).some(entry =>
     entry.data.some(isActiveTranscription)
@@ -672,7 +700,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
   }, [getToken, hasActiveTranscriptions, isAuthenticated, refreshTranscriptionById, updateTranscriptionInCache]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !cacheUserValidated || !isAuthenticated) {
       return;
     }
 
@@ -682,10 +710,10 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     } catch {
       // Ignore storage errors
     }
-  }, [transcriptions]);
+  }, [transcriptions, cacheUserValidated, isAuthenticated]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !tagsLoaded) {
+    if (typeof window === 'undefined' || !tagsLoaded || !cacheUserValidated || !isAuthenticated) {
       return;
     }
 
@@ -695,10 +723,10 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     } catch {
       // Ignore storage errors
     }
-  }, [tags, tagsLoaded]);
+  }, [tags, tagsLoaded, cacheUserValidated, isAuthenticated]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !foldersLoaded) {
+    if (typeof window === 'undefined' || !foldersLoaded || !cacheUserValidated || !isAuthenticated) {
       return;
     }
 
@@ -708,7 +736,7 @@ export function TranscriptionCacheProvider({ children }: { children: ReactNode }
     } catch {
       // Ignore storage errors
     }
-  }, [folders, foldersLoaded]);
+  }, [folders, foldersLoaded, cacheUserValidated, isAuthenticated]);
 
   const updateFolderInCache = useCallback((id: string, updates: Partial<Folder>) => {
     setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));

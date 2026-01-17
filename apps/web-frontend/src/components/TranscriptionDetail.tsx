@@ -223,52 +223,65 @@ export function TranscriptionDetail() {
   const [isRecreatingNote, setIsRecreatingNote] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
 
-  const fetchTranscription = useCallback(async (options?: { silent?: boolean }) => {
-    if (!id) return;
-    if (!options?.silent) {
-      setIsLoading(true);
-    }
-    try {
-      // Try authenticated route first
-      try {
-        const data = await api.getTranscription(id);
-        setTranscription(data);
-        cacheTranscriptionDetail(data);
-      } catch (authErr) {
-        // If auth fails, try public route
-        try {
-          const data = await api.getPublicTranscription(id);
-          setTranscription(data);
-          cacheTranscriptionDetail(data);
-        } catch {
-          // Both failed, show error
-          throw authErr;
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load transcription');
-    } finally {
-      if (!options?.silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [cacheTranscriptionDetail, id]);
 
   const transcriptionStatus = transcription?.status;
 
   useEffect(() => {
     if (!id) return;
 
+    let isMounted = true;
+
     const cached = getCachedTranscription(id, { includeListCache: true });
     if (cached) {
-      setTranscription(cached);
-      setIsLoading(false);
-      fetchTranscription({ silent: true });
+      if (isMounted) {
+        setTranscription(cached);
+        setIsLoading(false);
+      }
+      // Silently refresh in background
+      (async () => {
+        try {
+          const data = await api.getTranscription(id);
+          if (isMounted) {
+            setTranscription(data);
+            cacheTranscriptionDetail(data);
+          }
+        } catch {
+          // Ignore errors on silent refresh
+        }
+      })();
       return;
     }
 
-    fetchTranscription();
-  }, [fetchTranscription, getCachedTranscription, id]);
+    // Initial fetch
+    (async () => {
+      if (isMounted) setIsLoading(true);
+      try {
+        try {
+          const data = await api.getTranscription(id);
+          if (isMounted) {
+            setTranscription(data);
+            cacheTranscriptionDetail(data);
+          }
+        } catch {
+          const data = await api.getPublicTranscription(id);
+          if (isMounted) {
+            setTranscription(data);
+            cacheTranscriptionDetail(data);
+          }
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load transcription');
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
   useEffect(() => {
     // Connect to SSE for real-time updates if processing
@@ -316,7 +329,16 @@ export function TranscriptionDetail() {
             payload.status === 'canceled'
           ) {
             eventSource.close();
-            fetchTranscription({ silent: true });
+            // Refresh data after processing completes
+            (async () => {
+              try {
+                const data = await api.getTranscription(id);
+                setTranscription(data);
+                cacheTranscriptionDetail(data);
+              } catch {
+                // Ignore errors
+              }
+            })();
           }
         }
       } catch (err) {
@@ -338,7 +360,7 @@ export function TranscriptionDetail() {
       eventSource.removeEventListener('transcription', handleTranscriptionUpdate);
       eventSource.close();
     };
-  }, [transcriptionStatus, isAuthenticated, id, fetchTranscription]);
+  }, [transcriptionStatus, isAuthenticated, id]);
 
   useEffect(() => {
     if (!id || !transcription) return;
@@ -504,7 +526,13 @@ export function TranscriptionDetail() {
       await triggerDownload(pdfUrl, `${transcription.title}.pdf`);
 
       if (!transcription.pdfKey) {
-        await fetchTranscription({ silent: true });
+        try {
+          const data = await api.getTranscription(id);
+          setTranscription(data);
+          cacheTranscriptionDetail(data);
+        } catch {
+          // Ignore errors on silent refresh
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download PDF');
@@ -516,9 +544,14 @@ export function TranscriptionDetail() {
   const handleRetry = async () => {
     if (!id || !transcription) return;
     try {
-      const response = await api.reprocessTranscription(id);
-      console.log('Retry response:', response);
-      fetchTranscription({ silent: true });
+      await api.reprocessTranscription(id);
+      try {
+        const data = await api.getTranscription(id);
+        setTranscription(data);
+        cacheTranscriptionDetail(data);
+      } catch {
+        // Ignore errors on silent refresh
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry transcription');
     }
@@ -539,14 +572,19 @@ export function TranscriptionDetail() {
   };
 
   const handleRecreateNote = async () => {
-
     if (!id) return;
     setIsRecreatingNote(true);
     setError(null);
     try {
       await api.restructureTranscription(id);
       invalidateTranscriptionDetail(id);
-      fetchTranscription({ silent: true });
+      try {
+        const data = await api.getTranscription(id);
+        setTranscription(data);
+        cacheTranscriptionDetail(data);
+      } catch {
+        // Ignore errors on silent refresh
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate notes');
     } finally {

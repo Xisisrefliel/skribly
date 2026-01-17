@@ -153,7 +153,7 @@ class ApiClient {
   }
 
   async generatePdf(id: string): Promise<string> {
-    const response = await this.request<{ url?: string }>(`/api/transcription/${id}/pdf`, {
+    await this.request<{ url?: string }>(`/api/transcription/${id}/pdf`, {
       method: 'POST',
     });
     // Return the backend proxy endpoint

@@ -207,7 +207,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
 
   if (isBillingLoading && !billingStatus) {
     return (
-      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
+      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up bg-black">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -221,7 +221,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
 
   if (billingStatus && !billingStatus.isActive) {
     return (
-      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
+      <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up bg-black">
         <CardHeader>
           <CardTitle>Subscription required</CardTitle>
           <CardDescription>
@@ -258,15 +258,15 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
   }
 
   return (
-    <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up">
+    <Card className="w-full max-w-xl mx-auto py-6 animate-fade-in-up bg-black">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           {files.length > 1 ? <Files className="h-5 w-5 text-primary" /> : <Upload className="h-5 w-5 text-primary" />}
           Upload {files.length > 1 ? 'Documents' : 'Audio, Video, or Documents'}
         </CardTitle>
         <CardDescription>
-          {files.length > 1 
-            ? `Combine ${files.length} documents into one set of study notes` 
+          {files.length > 1
+            ? `Combine ${files.length} documents into one set of study notes`
             : "Upload recordings or documents (PDF, PPTX, DOCX) to transcribe them into notes"}
         </CardDescription>
       </CardHeader>

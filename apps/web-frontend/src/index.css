@@ -189,26 +189,26 @@
 }
 
 .dark {
-  /* Deep, rich near-black dark mode */
-  --background: oklch(0.12 0.008 250);
+  /* Deep, rich near-black dark mode with enhanced depth */
+  --background: oklch(0.1 0.01 250);
   --foreground: oklch(0.92 0.005 250);
-  --card: oklch(0.15 0.01 250);
+  --card: oklch(0.17 0.012 250);
   --card-foreground: oklch(0.92 0.005 250);
-  --popover: oklch(0.16 0.01 250);
+  --popover: oklch(0.18 0.012 250);
   --popover-foreground: oklch(0.92 0.005 250);
   --primary: oklch(0.62 0.2 250);
   --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.2 0.01 250);
+  --secondary: oklch(0.22 0.012 250);
   --secondary-foreground: oklch(0.9 0.005 250);
-  --muted: oklch(0.2 0.01 250);
+  --muted: oklch(0.2 0.012 250);
   --muted-foreground: oklch(0.6 0.01 250);
-  --accent: oklch(0.22 0.012 250);
+  --accent: oklch(0.24 0.014 250);
   --accent-foreground: oklch(0.9 0.005 250);
   --destructive: oklch(0.6 0.2 25);
-  --border: oklch(0.26 0.015 250);
-  --input: oklch(0.18 0.01 250);
+  --border: oklch(0.28 0.018 250);
+  --input: oklch(0.16 0.012 250);
   --ring: oklch(0.62 0.2 250);
-  
+
   /* Semantic status colors - dark mode */
   --status-info: oklch(0.62 0.16 250);
   --status-info-soft: oklch(0.2 0.04 250);
@@ -225,22 +225,22 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.14 0.008 250);
+  --sidebar: oklch(0.15 0.01 250);
   --sidebar-foreground: oklch(0.92 0.005 250);
   --sidebar-primary: oklch(0.62 0.2 250);
   --sidebar-primary-foreground: oklch(0.92 0.005 250);
-  --sidebar-accent: oklch(0.22 0.012 250);
+  --sidebar-accent: oklch(0.24 0.014 250);
   --sidebar-accent-foreground: oklch(0.9 0.005 250);
-  --sidebar-border: oklch(0.26 0.015 250);
+  --sidebar-border: oklch(0.28 0.018 250);
   --sidebar-ring: oklch(0.5 0.12 250);
-  
-  /* Skeuomorphic depth variables - dark mode (subtle blue tint) */
-  --neu-shadow-light: oklch(0.28 0.01 250 / 45%);
-  --neu-shadow-dark: oklch(0.05 0.01 250 / 60%);
-  --neu-inset-light: oklch(0.32 0.01 250 / 35%);
-  --neu-inset-dark: oklch(0.05 0.01 250 / 45%);
-  --neu-gradient-start: oklch(0.2 0.012 250);
-  --neu-gradient-end: oklch(0.14 0.008 250);
+
+  /* Skeuomorphic depth variables - dark mode with enhanced shadows for depth */
+  --neu-shadow-light: oklch(0.35 0.015 250 / 65%);
+  --neu-shadow-dark: oklch(0.03 0.01 250 / 85%);
+  --neu-inset-light: oklch(0.38 0.015 250 / 50%);
+  --neu-inset-dark: oklch(0.04 0.01 250 / 70%);
+  --neu-gradient-start: oklch(0.21 0.014 250);
+  --neu-gradient-end: oklch(0.15 0.01 250);
   --landing-grid-line: oklch(0.98 0 0 / 0.08);
 }
 
@@ -306,6 +306,23 @@
     inset 0 -1px 1px var(--neu-inset-dark);
 }
 
+/* Enhanced navbar shadows for dark mode */
+.dark .neu-pill {
+  box-shadow:
+    0 6px 32px -4px var(--neu-shadow-dark),
+    0 4px 16px -2px var(--neu-shadow-dark),
+    inset 0 1px 1px var(--neu-shadow-light),
+    inset 0 -1px 1px var(--neu-inset-dark);
+}
+
+.dark .neu-pill:hover {
+  box-shadow:
+    0 8px 40px -4px var(--neu-shadow-dark),
+    0 6px 20px -2px var(--neu-shadow-dark),
+    inset 0 1px 1px var(--neu-shadow-light),
+    inset 0 -1px 1px var(--neu-inset-dark);
+}
+
 /* ===== SKEUOMORPHIC BUTTONS ===== */
 .neu-panel {
   background: linear-gradient(
@@ -317,6 +334,15 @@
   box-shadow:
     0 2px 4px -1px var(--neu-shadow-dark),
     0 1px 2px -1px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark) !important;
+}
+
+/* Enhanced panel shadows for dark mode */
+.dark .neu-panel {
+  box-shadow:
+    0 4px 16px -2px var(--neu-shadow-dark),
+    0 2px 8px -1px var(--neu-shadow-dark),
     inset 0 1px 0 var(--neu-shadow-light),
     inset 0 -1px 0 var(--neu-inset-dark) !important;
 }
@@ -578,6 +604,23 @@
     inset 0 1px 0 var(--neu-shadow-light);
 }
 
+/* Enhanced card shadows for dark mode */
+.dark [data-slot="card"] {
+  box-shadow:
+    0 6px 24px -4px var(--neu-shadow-dark),
+    0 4px 12px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark);
+}
+
+.dark [data-slot="card"]:hover {
+  box-shadow:
+    0 8px 32px -4px var(--neu-shadow-dark),
+    0 6px 16px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark);
+}
+
 /* ===== SKEUOMORPHIC INPUTS ===== */
 [data-slot="input"] {
   background: linear-gradient(
@@ -621,6 +664,18 @@
     0 8px 32px -4px var(--neu-shadow-dark),
     0 4px 12px -2px var(--neu-shadow-dark),
     inset 0 1px 0 var(--neu-shadow-light) !important;
+}
+
+/* Enhanced dropdown shadows for dark mode */
+.dark .neu-dropdown,
+.dark [data-slot="dropdown-menu-content"],
+.dark [data-slot="context-menu-content"],
+.dark [data-slot="context-menu-sub-content"] {
+  box-shadow:
+    0 12px 48px -4px var(--neu-shadow-dark),
+    0 8px 24px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark) !important;
 }
 
 [data-slot="dropdown-menu-item"],
@@ -1249,6 +1304,15 @@ html {
     inset 0 1px 0 var(--neu-shadow-light);
 }
 
+/* Enhanced floating card shadows for dark mode */
+.dark .neu-floating-card {
+  box-shadow:
+    0 8px 32px -4px var(--neu-shadow-dark),
+    0 4px 16px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark);
+}
+
 /* ===== SIDEBAR ITEM STYLES ===== */
 .neu-sidebar-item {
   background: transparent;
@@ -1380,4 +1444,21 @@ a svg,
     -4px 0 32px -4px var(--neu-shadow-dark),
     -2px 0 12px -2px var(--neu-shadow-dark),
     inset 0 1px 0 var(--neu-shadow-light);
+}
+
+/* Enhanced drawer shadows for dark mode */
+.dark .neu-drawer-panel {
+  box-shadow:
+    8px 0 48px -4px var(--neu-shadow-dark),
+    4px 0 24px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark);
+}
+
+.dark .neu-drawer-panel[data-side="right"] {
+  box-shadow:
+    -8px 0 48px -4px var(--neu-shadow-dark),
+    -4px 0 24px -2px var(--neu-shadow-dark),
+    inset 0 1px 0 var(--neu-shadow-light),
+    inset 0 -1px 0 var(--neu-inset-dark);
 }
