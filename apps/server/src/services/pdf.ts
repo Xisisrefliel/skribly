@@ -306,42 +306,65 @@ export const pdfService = {
    * Generate a PDF from markdown content
    */
   async generatePDF(markdown: string, title: string): Promise<Buffer> {
+    // Validate input
+    if (!markdown || !markdown.trim()) {
+      throw new Error('Markdown content is empty');
+    }
+
+    if (!title || !title.trim()) {
+      throw new Error('Title is required');
+    }
+
     // Add title as H1 if not already present
-    let content = markdown;
-    if (!markdown.trim().startsWith('# ')) {
-      content = `# ${title}\n\n${markdown}`;
+    let content = markdown.trim();
+    if (!content.startsWith('# ')) {
+      content = `# ${title}\n\n${content}`;
     }
 
     // Preprocess tables to add sizing classes
     content = preprocessTables(content);
 
-    const contentWithMathJax = `${MATHJAX_SCRIPT}\n${content}`;
+    // Note: We'll skip MathJax for now as it can cause rendering issues
+    // If you need math support, consider using a different approach
 
-    const result = await mdToPdf(
-      { content: contentWithMathJax },
-      {
-        css: PDF_STYLES,
-        pdf_options: {
-          format: 'A4',
-          margin: {
-            top: '20mm',
-            right: '20mm',
-            bottom: '20mm',
-            left: '20mm',
+    try {
+      const result = await mdToPdf(
+        { content },
+        {
+          css: PDF_STYLES,
+          pdf_options: {
+            format: 'A4',
+            margin: {
+              top: '20mm',
+              right: '20mm',
+              bottom: '20mm',
+              left: '20mm',
+            },
+            printBackground: true,
           },
-          printBackground: true,
-        },
-        launch_options: {
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        },
+          launch_options: {
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          },
+        }
+      );
+
+      if (!result || !result.content || result.content.length === 0) {
+        console.error('md-to-pdf returned empty content', {
+          hasResult: !!result,
+          hasContent: !!result?.content,
+          contentLength: result?.content?.length,
+        });
+        throw new Error('PDF generation failed: no content was generated');
       }
-    );
 
-    if (!result || !result.content) {
-      throw new Error('Failed to generate PDF');
+      return result.content;
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      if (error instanceof Error) {
+        throw new Error(`PDF generation failed: ${error.message}`);
+      }
+      throw new Error('PDF generation failed: Unknown error');
     }
-
-    return result.content;
   },
 
   /**

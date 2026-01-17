@@ -225,7 +225,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
         <CardHeader>
           <CardTitle>Subscription required</CardTitle>
           <CardDescription>
-            Subscribe to Notism Pro for $7.99/month to upload and transcribe unlimited lectures.
+            Subscribe to Notism Pro for $4.99/month to upload and transcribe unlimited lectures.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -249,7 +249,7 @@ export function FileUpload({ onUploadComplete, transcriptionMode = 'quality' }: 
                 Opening checkout...
               </>
             ) : (
-              'Subscribe for $7.99/month'
+              'Subscribe for $4.99/month'
             )}
           </Button>
         </CardContent>

@@ -257,15 +257,28 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
     }
 
     if (!transcription.structuredText) {
-      res.status(409).json({ error: 'Conflict', message: 'Structured transcription not ready yet' });
+      console.warn(`[PDF Generation] Structured text not ready for transcription ${id}`, {
+        status: transcription.status,
+        hasStructuredText: !!transcription.structuredText,
+      });
+      res.status(409).json({
+        error: 'Conflict',
+        message: 'Structured transcription not ready yet. Please wait for the AI to finish processing.'
+      });
       return;
     }
 
     if (transcription.pdfKey) {
+      console.log(`[PDF Generation] PDF already exists for transcription ${id}, returning signed URL`);
       const url = await r2Service.getSignedUrl(transcription.pdfKey, 86400);
       res.json({ url });
       return;
     }
+
+    console.log(`[PDF Generation] Starting PDF generation for transcription ${id}`, {
+      titleLength: transcription.title.length,
+      contentLength: transcription.structuredText.length,
+    });
 
     const { pdfKey, pdfUrl } = await pdfService.generateAndUpload(
       id,
@@ -277,12 +290,16 @@ router.post('/transcription/:id/pdf', async (req: Request, res: Response): Promi
 
     await d1Service.updatePdfInfo(id, pdfKey);
 
+    console.log(`[PDF Generation] PDF generated successfully for transcription ${id}`);
     res.json({ url: pdfUrl });
   } catch (error) {
-    console.error('Generate PDF error:', error);
+    console.error('Generate PDF error:', error, {
+      transcriptionId: id,
+      userId,
+    });
     res.status(500).json({
       error: 'Failed to generate PDF',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: error instanceof Error ? error.message : 'Unknown error occurred during PDF generation',
     });
   }
 });
