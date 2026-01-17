@@ -223,7 +223,8 @@ struct UploadView: View {
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.border, lineWidth: 2, dash: 4)
+                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [4]))
+                    .foregroundColor(Color.border)
             )
         }
     }
