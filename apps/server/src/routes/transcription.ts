@@ -392,13 +392,19 @@ router.post('/transcription/:id/reprocess', async (req: Request, res: Response):
   const userId = req.userId!;
 
   try {
-    const isActive = await d1Service.isSubscriptionActive(userId);
-    if (!isActive) {
-      res.status(402).json({
-        error: 'Subscription required',
-        message: 'An active subscription is required to reprocess transcription.',
-      });
-      return;
+    // Bypass subscription check for test user
+    const bypassEmails = ['guelfarukguel@gmail.com'];
+    const shouldBypass = req.user?.email && bypassEmails.includes(req.user.email);
+
+    if (!shouldBypass) {
+      const isActive = await d1Service.isSubscriptionActive(userId);
+      if (!isActive) {
+        res.status(402).json({
+          error: 'Subscription required',
+          message: 'An active subscription is required to reprocess transcription.',
+        });
+        return;
+      }
     }
 
     const transcription = await d1Service.getTranscription(id, userId);
@@ -461,13 +467,19 @@ router.post('/transcription/:id/restructure', async (req: Request, res: Response
   const userId = req.userId!;
 
   try {
-    const isActive = await d1Service.isSubscriptionActive(userId);
-    if (!isActive) {
-      res.status(402).json({
-        error: 'Subscription required',
-        message: 'An active subscription is required to recreate notes.',
-      });
-      return;
+    // Bypass subscription check for test user
+    const bypassEmails = ['guelfarukguel@gmail.com'];
+    const shouldBypass = req.user?.email && bypassEmails.includes(req.user.email);
+
+    if (!shouldBypass) {
+      const isActive = await d1Service.isSubscriptionActive(userId);
+      if (!isActive) {
+        res.status(402).json({
+          error: 'Subscription required',
+          message: 'An active subscription is required to recreate notes.',
+        });
+        return;
+      }
     }
 
     const transcription = await d1Service.getTranscription(id, userId);
@@ -533,13 +545,19 @@ router.post('/transcribe/:id', async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const isActive = await d1Service.isSubscriptionActive(userId);
-    if (!isActive) {
-      res.status(402).json({
-        error: 'Subscription required',
-        message: 'An active subscription is required to start transcription.',
-      });
-      return;
+    // Bypass subscription check for test user
+    const bypassEmails = ['guelfarukguel@gmail.com'];
+    const shouldBypass = req.user?.email && bypassEmails.includes(req.user.email);
+
+    if (!shouldBypass) {
+      const isActive = await d1Service.isSubscriptionActive(userId);
+      if (!isActive) {
+        res.status(402).json({
+          error: 'Subscription required',
+          message: 'An active subscription is required to start transcription.',
+        });
+        return;
+      }
     }
 
     // Get the transcription record

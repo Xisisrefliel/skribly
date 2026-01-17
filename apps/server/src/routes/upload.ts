@@ -61,6 +61,14 @@ const upload = multer({
 async function requireActiveSubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId!;
+
+    // Bypass subscription check for specific test user
+    const bypassEmails = ['guelfarukguel@gmail.com'];
+    if (req.user?.email && bypassEmails.includes(req.user.email)) {
+      next();
+      return;
+    }
+
     const isActive = await d1Service.isSubscriptionActive(userId);
 
     // Allow 3 free transcriptions for users without subscription
