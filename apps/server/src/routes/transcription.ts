@@ -213,7 +213,7 @@ router.get('/transcription/:id/source', async (req: Request, res: Response): Pro
   }
 });
 
-// GET /api/transcription/:id/pdf - Download structured PDF
+// GET /api/transcription/:id/pdf - Get PDF download URL (deprecated, use /download instead)
 
 router.get('/transcription/:id/pdf', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -236,6 +236,45 @@ router.get('/transcription/:id/pdf', async (req: Request, res: Response): Promis
     res.json({ url });
   } catch (error) {
     console.error('Download PDF error:', error);
+    res.status(500).json({
+      error: 'Failed to download PDF',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// GET /api/transcription/:id/pdf/download - Download PDF file (proxied through backend to avoid CORS)
+router.get('/transcription/:id/pdf/download', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+
+    const transcription = await d1Service.getTranscription(id, userId);
+
+    if (!transcription) {
+      res.status(404).json({ error: 'Not Found', message: 'Transcription not found' });
+      return;
+    }
+
+    if (!transcription.pdfKey) {
+      res.status(404).json({ error: 'Not Found', message: 'PDF not ready yet' });
+      return;
+    }
+
+    console.log(`[PDF Download] Downloading PDF for transcription ${id}`);
+
+    // Get the PDF from R2
+    const pdfBuffer = await r2Service.getFile(transcription.pdfKey);
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${transcription.title}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+
+    res.end(pdfBuffer);
+  } catch (error) {
+    console.error('PDF download error:', error);
     res.status(500).json({
       error: 'Failed to download PDF',
       message: error instanceof Error ? error.message : 'Unknown error',

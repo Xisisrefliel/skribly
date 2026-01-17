@@ -147,15 +147,17 @@ class ApiClient {
   }
 
   async getPdfDownloadUrl(id: string): Promise<string> {
-    const response = await this.request<{ url: string }>(`/api/transcription/${id}/pdf`);
-    return response.url;
+    // Return the backend proxy endpoint instead of the R2 signed URL
+    // This avoids CORS issues by downloading through the backend
+    return `/api/transcription/${id}/pdf/download`;
   }
 
   async generatePdf(id: string): Promise<string> {
-    const response = await this.request<{ url: string }>(`/api/transcription/${id}/pdf`, {
+    const response = await this.request<{ url?: string }>(`/api/transcription/${id}/pdf`, {
       method: 'POST',
     });
-    return response.url;
+    // Return the backend proxy endpoint
+    return `/api/transcription/${id}/pdf/download`;
   }
 
   async uploadFile(file: File, title: string): Promise<UploadResponse> {

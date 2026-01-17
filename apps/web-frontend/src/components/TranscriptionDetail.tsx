@@ -271,7 +271,7 @@ export function TranscriptionDetail() {
   }, [fetchTranscription, getCachedTranscription, id]);
 
   useEffect(() => {
-    // Poll for updates if processing
+    // Connect to SSE for real-time updates if processing
     if (
       !transcriptionStatus ||
       (transcriptionStatus !== 'processing' &&
@@ -281,12 +281,64 @@ export function TranscriptionDetail() {
       return;
     }
 
-    const interval = setInterval(() => {
-      fetchTranscription({ silent: true });
-    }, 3000);
+    if (!isAuthenticated || !id) {
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [transcriptionStatus, fetchTranscription]);
+    const eventSource = new EventSource('/api/transcriptions/events');
+
+    const handleTranscriptionUpdate = (event: Event) => {
+      const messageEvent = event as MessageEvent;
+      try {
+        const payload = JSON.parse(messageEvent.data) as {
+          transcriptionId: string;
+          status: TranscriptionStatus;
+          progress: number;
+          errorMessage?: string | null;
+        };
+
+        // Only update if this is for the current transcription
+        if (payload.transcriptionId === id) {
+          setTranscription(prev =>
+            prev
+              ? {
+                  ...prev,
+                  status: payload.status,
+                  progress: payload.progress,
+                }
+              : null
+          );
+
+          // Close connection when processing is done
+          if (
+            payload.status === 'completed' ||
+            payload.status === 'error' ||
+            payload.status === 'canceled'
+          ) {
+            eventSource.close();
+            fetchTranscription({ silent: true });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse transcription event:', err);
+      }
+    };
+
+    eventSource.addEventListener('transcription', handleTranscriptionUpdate);
+    eventSource.addEventListener('ping', () => {
+      // Heartbeat, no action needed
+    });
+
+    eventSource.onerror = () => {
+      console.error('SSE connection error');
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.removeEventListener('transcription', handleTranscriptionUpdate);
+      eventSource.close();
+    };
+  }, [transcriptionStatus, isAuthenticated, id, fetchTranscription]);
 
   useEffect(() => {
     if (!id || !transcription) return;
@@ -392,6 +444,19 @@ export function TranscriptionDetail() {
   };
 
   const triggerDownload = async (url: string, filename: string) => {
+    // For same-origin URLs (backend endpoints), use simple redirect
+    if (url.startsWith('/')) {
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.rel = 'noopener noreferrer';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return;
+    }
+
+    // For external URLs, fetch as blob (used for source file downloads)
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error('Failed to download file');
