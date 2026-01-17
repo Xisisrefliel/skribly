@@ -16,19 +16,19 @@ struct OnboardingView: View {
         OnboardingPage(
             icon: "waveform.circle.fill",
             title: "Welcome to Lecture",
-            description: "Transform your audio and video recordings into structured, readable notes with the power of AI.",
+            description: "Transform your lectures, recordings, and documents into structured, readable notes with the power of AI.",
             color: .blue
         ),
         OnboardingPage(
             icon: "doc.badge.plus",
             title: "Select Your File",
-            description: "Tap the + button to import any audio or video file from your device. We support all common formats like MP3, M4A, MP4, and more.",
+            description: "Tap the + button to import audio, video, or documents. We support MP3, M4A, MP4, PDF, PPTX, and more.",
             color: .green
         ),
         OnboardingPage(
             icon: "sparkles",
             title: "AI-Powered Transcription",
-            description: "Your recording is automatically transcribed and structured into organized notes with headers, bullet points, and key takeaways.",
+            description: "Your content is automatically processed and structured into organized notes with headers, bullet points, and key takeaways.",
             color: .purple
         ),
         OnboardingPage(

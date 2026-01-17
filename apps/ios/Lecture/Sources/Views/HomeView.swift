@@ -1,12 +1,8 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct HomeView: View {
     @EnvironmentObject var store: TranscriptionStore
-    @State private var showFilePicker = false
-    @State private var showUploadConfirmation = false
-    @State private var selectedFileURL: URL?
-    @State private var selectedFileName = ""
+    @Binding var selectedTab: AppTab
     @State private var showError = false
     @State private var showDeleteConfirmation = false
     @State private var showExportOptions = false
@@ -59,7 +55,7 @@ struct HomeView: View {
                     }
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            showFilePicker = true
+                            selectedTab = .upload
                         } label: {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
@@ -75,30 +71,6 @@ struct HomeView: View {
             }
             .refreshable {
                 await store.fetchTranscriptions()
-            }
-            .fileImporter(
-                isPresented: $showFilePicker,
-                allowedContentTypes: [
-                    // Audio formats
-                    .audio, .mpeg4Audio, .mp3, .wav, .aiff,
-                    // Video formats
-                    .movie, .video, .mpeg4Movie, .quickTimeMovie, .avi,
-                    // MKV format (custom UTType)
-                    UTType(filenameExtension: "mkv") ?? .movie
-                ],
-                allowsMultipleSelection: false
-            ) { result in
-                handleFileSelection(result)
-            }
-            .alert("Upload Lecture", isPresented: $showUploadConfirmation) {
-                Button("Cancel", role: .cancel) {
-                    cleanupFileSelection()
-                }
-                Button("Upload") {
-                    uploadSelectedFile()
-                }
-            } message: {
-                Text(selectedFileName)
             }
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {
@@ -304,54 +276,6 @@ struct HomeView: View {
         }
     }
     
-    // MARK: - Actions
-    
-    private func handleFileSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            
-            // Start accessing the security-scoped resource
-            guard url.startAccessingSecurityScopedResource() else {
-                store.error = "Unable to access the selected file"
-                return
-            }
-            
-            selectedFileURL = url
-            selectedFileName = url.deletingPathExtension().lastPathComponent
-            showUploadConfirmation = true
-            
-        case .failure(let error):
-            store.error = error.localizedDescription
-        }
-    }
-    
-    private func cleanupFileSelection() {
-        if let url = selectedFileURL {
-            url.stopAccessingSecurityScopedResource()
-        }
-        selectedFileURL = nil
-        selectedFileName = ""
-    }
-    
-    private func uploadSelectedFile() {
-        guard let fileURL = selectedFileURL else { return }
-        let title = selectedFileName.isEmpty ? "Untitled Lecture" : selectedFileName
-        
-        Task {
-            do {
-                try await store.uploadAudio(fileURL: fileURL, title: title)
-            } catch {
-                // Error is already set in the store
-                print("Upload failed: \(error)")
-            }
-            
-            // Cleanup after upload completes (success or failure)
-            fileURL.stopAccessingSecurityScopedResource()
-            selectedFileURL = nil
-            selectedFileName = ""
-        }
-    }
 }
 
 // MARK: - Transcription Row
@@ -438,7 +362,7 @@ struct TranscriptionRow: View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(selectedTab: .constant(.home))
         .environmentObject(TranscriptionStore())
 }
 

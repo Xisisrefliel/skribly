@@ -45,37 +45,30 @@ class TranscriptionStore: ObservableObject {
         isLoading = false
     }
     
-    func uploadAudio(fileURL: URL, title: String) async throws {
+    func uploadFile(fileURL: URL, title: String, mode: String = "quality") async throws {
         isUploading = true
         uploadProgress = 0
         error = nil
-        
+
         do {
-            // Copy file to temp location on background thread to avoid blocking UI
-            let tempURL = try await copyToTempLocation(fileURL: fileURL)
-            
-            defer {
-                // Clean up temp file
-                try? FileManager.default.removeItem(at: tempURL)
-            }
-            
             // Upload the file
-            let response = try await api.uploadAudio(fileURL: tempURL, title: title) { [weak self] progress in
-                // Ensure UI updates happen on main actor
+            let response = try await api.uploadAudio(fileURL: fileURL, title: title) { [weak self] progress in
                 Task { @MainActor in
                     self?.uploadProgress = progress
                 }
             }
-            
-            // Immediately start transcription
-            _ = try await api.startTranscription(id: response.id)
-            
-            // Reset upload state before fetching
+
+            // Start transcription (don't wait for it to complete)
+            _ = try await api.startTranscription(id: response.id, mode: mode)
+
+            // Reset upload state
             isUploading = false
             uploadProgress = 0
-            
-            // Refresh list
-            await fetchTranscriptions()
+
+            // Refresh list in background (don't block navigation)
+            Task {
+                await fetchTranscriptions()
+            }
         } catch {
             isUploading = false
             uploadProgress = 0
@@ -84,22 +77,38 @@ class TranscriptionStore: ObservableObject {
             throw error
         }
     }
-    
-    private func copyToTempLocation(fileURL: URL) async throws -> URL {
-        // Perform file copy on background thread to avoid blocking UI
-        try await Task.detached(priority: .userInitiated) {
-            let tempDir = FileManager.default.temporaryDirectory
-            let tempURL = tempDir.appendingPathComponent(fileURL.lastPathComponent)
-            
-            // Remove existing file if present
-            if FileManager.default.fileExists(atPath: tempURL.path) {
-                try FileManager.default.removeItem(at: tempURL)
+
+    func uploadFilesBatch(fileURLs: [URL], title: String, mode: String = "quality") async throws {
+        isUploading = true
+        uploadProgress = 0
+        error = nil
+
+        do {
+            // Upload multiple files as a batch
+            let response = try await api.uploadFilesBatch(fileURLs: fileURLs, title: title) { [weak self] progress in
+                Task { @MainActor in
+                    self?.uploadProgress = progress
+                }
             }
-            
-            // Copy the file
-            try FileManager.default.copyItem(at: fileURL, to: tempURL)
-            return tempURL
-        }.value
+
+            // Start transcription
+            _ = try await api.startTranscription(id: response.id, mode: mode)
+
+            // Reset upload state
+            isUploading = false
+            uploadProgress = 0
+
+            // Refresh list in background (don't block navigation)
+            Task {
+                await fetchTranscriptions()
+            }
+        } catch {
+            isUploading = false
+            uploadProgress = 0
+            self.error = "Upload failed: \(error.localizedDescription)"
+            print("Upload error: \(error)")
+            throw error
+        }
     }
     
     func deleteTranscription(id: String) async {

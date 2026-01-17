@@ -1,21 +1,22 @@
 import SwiftUI
-import GoogleSignIn
+import Clerk
 
 @main
 struct LectureApp: App {
+    @State private var clerk = Clerk.shared
     @StateObject private var authService = AuthService.shared
     @StateObject private var transcriptionStore = TranscriptionStore()
     @StateObject private var onboardingManager = OnboardingManager.shared
-    
+
     var body: some Scene {
         WindowGroup {
             Group {
-                if authService.isLoading {
-                    // Show loading while checking auth state
+                if !clerk.isLoaded {
+                    // Show loading while Clerk is initializing
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(.systemGroupedBackground))
-                } else if authService.isAuthenticated {
+                } else if clerk.user != nil {
                     // User is signed in - show main app
                     ContentView()
                         .environmentObject(transcriptionStore)
@@ -30,13 +31,11 @@ struct LectureApp: App {
                         .environmentObject(authService)
                 }
             }
+            .environment(\.clerk, clerk)
             .task {
-                // Check for existing session on app launch
-                await authService.checkSession()
-            }
-            .onOpenURL { url in
-                // Handle Google Sign-In callback URL
-                _ = authService.handleURL(url)
+                // Configure and load Clerk
+                clerk.configure(publishableKey: "pk_test_Z29yZ2VvdXMtZGFzc2llLTkyLmNsZXJrLmFjY291bnRzLmRldiQ")
+                try? await clerk.load()
             }
         }
     }

@@ -147,9 +147,9 @@ struct TranscriptionDetailView: View {
                         .foregroundStyle(.purple)
                     Text("Structuring notes...")
                 } else {
-                    Image(systemName: "waveform")
+                    Image(systemName: "doc.text")
                         .foregroundStyle(.blue)
-                    Text("Transcribing audio...")
+                    Text("Processing...")
                 }
                 
                 Spacer()
@@ -175,30 +175,6 @@ struct TranscriptionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 
-                // Debug info: show model and language
-                if currentTranscription.whisperModel != nil || currentTranscription.detectedLanguage != nil {
-                    HStack(spacing: 8) {
-                        if let model = currentTranscription.whisperModel {
-                            Text(model)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundStyle(.blue)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        if let language = currentTranscription.detectedLanguage {
-                            Text(language)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundStyle(.purple)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                    }
-                    .padding(.top, 2)
-                }
             }
             
             Spacer()
@@ -225,7 +201,7 @@ struct TranscriptionDetailView: View {
             HStack {
                 ProgressView()
                     .scaleEffect(0.8)
-                Text("Transcribing...")
+                Text("Processing...")
             }
             .foregroundStyle(.blue)
         case .structuring:

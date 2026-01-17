@@ -110,13 +110,14 @@ class APIClient {
         // Get auth headers before preparing upload
         let authHeaders = try await authorizationHeader()
 
-        // Prepare multipart data on background thread to avoid blocking UI
-        let (body, boundary) = try await Task.detached(priority: .userInitiated) {
-            // Read file data
-            let fileData = try Data(contentsOf: fileURL)
-            let fileName = fileURL.lastPathComponent
-            let mimeType = self.mimeType(for: fileURL)
+        // Read file data in current context (before detached task)
+        // This ensures we have access to the file before entering isolated context
+        let fileData = try Data(contentsOf: fileURL)
+        let fileName = fileURL.lastPathComponent
+        let mimeType = self.mimeType(for: fileURL)
 
+        // Prepare multipart data on background thread to avoid blocking UI
+        let (body, boundary) = await Task.detached(priority: .userInitiated) {
             // Create multipart form data
             let boundary = UUID().uuidString
             var body = Data()
@@ -151,15 +152,70 @@ class APIClient {
         return try decoder.decode(UploadResponse.self, from: data)
     }
 
-    func startTranscription(id: String) async throws -> TranscribeResponse {
+    func startTranscription(id: String, mode: String = "quality") async throws -> TranscribeResponse {
         let url = try buildURL(path: "/api/transcribe/\(id)")
         var request = try await authorizedRequest(url: url, method: "POST")
         request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = ["mode": mode]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
 
         return try decoder.decode(TranscribeResponse.self, from: data)
+    }
+
+    func uploadFilesBatch(fileURLs: [URL], title: String, progressHandler: @escaping (Double) -> Void) async throws -> UploadResponse {
+        let url = try buildURL(path: "/api/upload-batch")
+
+        // Get auth headers before preparing upload
+        let authHeaders = try await authorizationHeader()
+
+        // Read all file data in current context
+        var filesData: [(data: Data, fileName: String, mimeType: String)] = []
+        for fileURL in fileURLs {
+            let fileData = try Data(contentsOf: fileURL)
+            let fileName = fileURL.lastPathComponent
+            let mimeType = self.mimeType(for: fileURL)
+            filesData.append((fileData, fileName, mimeType))
+        }
+
+        // Prepare multipart data
+        let (body, boundary) = await Task.detached(priority: .userInitiated) {
+            let boundary = UUID().uuidString
+            var body = Data()
+
+            // Add title field
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"title\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(title)\r\n".data(using: .utf8)!)
+
+            // Add all files
+            for file in filesData {
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"files\"; filename=\"\(file.fileName)\"\r\n".data(using: .utf8)!)
+                body.append("Content-Type: \(file.mimeType)\r\n\r\n".data(using: .utf8)!)
+                body.append(file.data)
+                body.append("\r\n".data(using: .utf8)!)
+            }
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+            return (body, boundary)
+        }.value
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for (key, value) in authHeaders {
+            request.addValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, response) = try await uploadWithProgress(request: request, data: body, progressHandler: progressHandler)
+        try validateResponse(response)
+
+        return try decoder.decode(UploadResponse.self, from: data)
     }
 
     func deleteTranscription(id: String) async throws {
@@ -361,6 +417,11 @@ class APIClient {
         case "avi": return "video/x-msvideo"
         case "mkv": return "video/x-matroska"
         case "webm": return "video/webm"
+        // Document formats
+        case "pdf": return "application/pdf"
+        case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        case "ppt": return "application/vnd.ms-powerpoint"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         default: return "application/octet-stream"
         }
     }
